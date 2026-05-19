@@ -16,6 +16,7 @@ import {
   recommanderPuissance,
   CONSO_FOYER_MOYEN_KWH,
 } from '@/lib/financial';
+import { getStaticSatelliteUrl } from '@/lib/satellite';
 
 export const dynamic = 'force-dynamic';
 
@@ -155,6 +156,7 @@ function buildDemo(input: DemoInput): Omit<SolarApiResponse, 'demo'> {
       input.surface,
       qualite,
     ),
+    photo_satellite_url: getStaticSatelliteUrl(input.lat, input.lng),
   };
 }
 
@@ -380,6 +382,7 @@ export async function GET(req: Request) {
       scenarios: config.scenarios,
       qualite,
       score_solaire: calculerScoreSolaire(heures, orientation, surface, qualite),
+      photo_satellite_url: getStaticSatelliteUrl(geo.lat, geo.lng),
     };
 
     return NextResponse.json(response);

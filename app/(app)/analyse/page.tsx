@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { SatellitePhoto } from '@/components/ui/SatellitePhoto';
 import {
   calculerFinancier,
   formatEuros,
@@ -330,6 +331,22 @@ function ToitureCard({ data }: { data: SolarApiResponse }) {
         <Sun className="w-4 h-4" style={{ color: '#F5821F' }} />
         <h2 className="font-display text-xl font-bold">Votre toiture</h2>
       </div>
+
+      <div className="mb-5">
+        <SatellitePhoto
+          lat={data.geocode.latitude}
+          lng={data.geocode.longitude}
+          height={320}
+          zoom={20}
+          alt={`Vue satellite — ${data.geocode.adresse}`}
+        />
+        <div className="text-xs text-text-muted mt-1.5 flex items-center gap-1">
+          <MapPin className="w-3 h-3" />
+          {data.geocode.adresse}, {data.geocode.ville}{' '}
+          {data.geocode.code_postal}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Stat
           icon={MapPin}

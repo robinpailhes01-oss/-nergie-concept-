@@ -56,6 +56,7 @@ export interface SolarApiResponse {
   scenarios: ProductionScenario[];
   qualite: QualiteImagerie;
   score_solaire: number;
+  photo_satellite_url: string | null;
 }
 
 // ============================================================

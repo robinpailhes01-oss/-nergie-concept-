@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArrowRight, MapPin } from 'lucide-react';
 import { StatutBadge } from '@/components/ui/Badge';
 import { formatEuros } from '@/lib/financial';
+import { getStaticSatelliteUrl } from '@/lib/satellite';
 import type { Prospect } from '@/types';
 
 interface Props {
@@ -53,10 +54,17 @@ export function RecentProspects({ prospects }: Props) {
                 className="border-b border-border/60 last:border-0 hover:bg-background/60 transition-colors"
               >
                 <td className="py-3 pr-4">
-                  <div className="font-semibold">
-                    {p.prenom} {p.nom}
+                  <div className="flex items-center gap-3">
+                    <ProspectThumb lat={p.latitude} lng={p.longitude} />
+                    <div>
+                      <div className="font-semibold">
+                        {p.prenom} {p.nom}
+                      </div>
+                      <div className="text-xs text-text-muted">
+                        {p.email ?? '—'}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-xs text-text-muted">{p.email ?? '—'}</div>
                 </td>
                 <td className="py-3 pr-4">
                   <div className="flex items-center gap-1 text-text-muted">
@@ -78,5 +86,40 @@ export function RecentProspects({ prospects }: Props) {
         </table>
       </div>
     </div>
+  );
+}
+
+function ProspectThumb({
+  lat,
+  lng,
+}: {
+  lat: number | null;
+  lng: number | null;
+}) {
+  const url = getStaticSatelliteUrl(lat, lng, {
+    width: 96,
+    height: 96,
+    zoom: 19,
+    marker: false,
+  });
+  if (!url) {
+    return (
+      <div
+        className="w-10 h-10 rounded-lg shrink-0"
+        style={{
+          background:
+            'linear-gradient(135deg, #FEF0E6 0%, #FCD7B4 100%)',
+        }}
+      />
+    );
+  }
+  return (
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img
+      src={url}
+      alt=""
+      className="w-10 h-10 rounded-lg object-cover shrink-0"
+      loading="lazy"
+    />
   );
 }

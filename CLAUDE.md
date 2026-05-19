@@ -103,5 +103,6 @@ si elles sont absentes.
 ```
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-GOOGLE_SOLAR_API_KEY=
+GOOGLE_SOLAR_API_KEY=             # serveur (Solar + Geocoding)
+NEXT_PUBLIC_GOOGLE_MAPS_KEY=      # client (Static Maps satellite)
 ```

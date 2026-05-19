@@ -10,11 +10,22 @@ import {
   Copy,
   Check,
   Save,
+  Calendar,
+  Sun,
+  Zap,
+  Euro,
+  TrendingUp,
+  Leaf,
+  Compass,
+  Clock,
+  Send,
 } from 'lucide-react';
 import { StatutBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { SatellitePhoto } from '@/components/ui/SatellitePhoto';
 import { formatEuros, formatNumber } from '@/lib/financial';
+import { getStaticSatelliteUrl } from '@/lib/satellite';
 import type { Prospect, ProspectStatut } from '@/types';
 
 const TABS: { key: ProspectStatut | 'all'; label: string }[] = [
@@ -157,10 +168,17 @@ export default function ProspectsPage() {
                   className="border-b border-border/60 last:border-0 hover:bg-background/60 cursor-pointer transition-colors"
                 >
                   <td className="py-3 pr-4">
-                    <div className="font-semibold">
-                      {p.prenom} {p.nom}
+                    <div className="flex items-center gap-3">
+                      <Thumbnail lat={p.latitude} lng={p.longitude} />
+                      <div>
+                        <div className="font-semibold">
+                          {p.prenom} {p.nom}
+                        </div>
+                        <div className="text-xs text-text-muted">
+                          {p.email ?? '—'}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs text-text-muted">{p.email ?? '—'}</div>
                   </td>
                   <td className="py-3 pr-4">
                     <div className="flex items-center gap-1 text-text-muted">
@@ -202,6 +220,41 @@ export default function ProspectsPage() {
         }}
       />
     </div>
+  );
+}
+
+function Thumbnail({
+  lat,
+  lng,
+}: {
+  lat: number | null;
+  lng: number | null;
+}) {
+  const url = getStaticSatelliteUrl(lat, lng, {
+    width: 96,
+    height: 96,
+    zoom: 19,
+    marker: false,
+  });
+  if (!url) {
+    return (
+      <div
+        className="w-12 h-12 rounded-lg shrink-0"
+        style={{
+          background:
+            'linear-gradient(135deg, #FEF0E6 0%, #FCD7B4 100%)',
+        }}
+      />
+    );
+  }
+  return (
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img
+      src={url}
+      alt=""
+      className="w-12 h-12 rounded-lg object-cover shrink-0"
+      loading="lazy"
+    />
   );
 }
 
@@ -265,6 +318,12 @@ function ProspectModal({
     setTimeout(() => setCopied(false), 1800);
   }
 
+  const vueProposition = prospect.proposition_vue_at
+    ? `Vue le ${new Date(prospect.proposition_vue_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+    : prospect.proposition_id
+      ? 'Pas encore consultée'
+      : null;
+
   return (
     <Modal
       open={Boolean(prospect)}
@@ -272,48 +331,244 @@ function ProspectModal({
       title={`${prospect.prenom} ${prospect.nom}`}
       size="lg"
     >
-      <div className="space-y-5">
-        {/* Contact */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Info icon={Mail} label="Email" value={prospect.email ?? '—'} />
-          <Info icon={Phone} label="Téléphone" value={prospect.telephone ?? '—'} />
-          <Info
-            icon={MapPin}
-            label="Adresse"
-            value={`${prospect.adresse}, ${prospect.ville} ${prospect.code_postal ?? ''}`}
-          />
-          <Info
-            icon={MapPin}
-            label="Création"
-            value={new Date(prospect.created_at).toLocaleDateString('fr-FR')}
-          />
-        </div>
-
-        {/* Données techniques */}
-        {prospect.production_annuelle_kwh && (
-          <div>
-            <h4 className="text-xs uppercase tracking-wide font-bold text-text-muted mb-2">
-              Étude technique
-            </h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <KV k="Surface toit" v={`${prospect.surface_toit_m2 ?? '—'} m²`} />
-              <KV k="Puissance" v={`${prospect.puissance_kwc ?? '—'} kWc`} />
-              <KV k="Production" v={`${formatNumber(prospect.production_annuelle_kwh)} kWh/an`} />
-              <KV k="Orientation" v={prospect.orientation_principale ?? '—'} />
-              <KV k="Score solaire" v={`${prospect.score_solaire ?? '—'}/100`} />
-              <KV k="Coût TTC" v={prospect.cout_installation_ttc ? formatEuros(prospect.cout_installation_ttc) : '—'} />
-              <KV k="Reste à charge" v={prospect.reste_a_charge ? formatEuros(prospect.reste_a_charge) : '—'} />
-              <KV k="ROI" v={prospect.temps_retour_ans ? `${prospect.temps_retour_ans} ans` : '—'} />
+      <div className="space-y-6">
+        {/* === EN-TÊTE : photo satellite + identité === */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="md:col-span-3">
+            <SatellitePhoto
+              lat={prospect.latitude}
+              lng={prospect.longitude}
+              height={240}
+              zoom={20}
+              alt={`Vue satellite — ${prospect.adresse}`}
+            />
+            <div className="text-xs text-text-muted mt-1.5 flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              {prospect.adresse}, {prospect.ville}{' '}
+              {prospect.code_postal ?? ''}
             </div>
           </div>
+          <div className="md:col-span-2 flex flex-col gap-3">
+            <StatutBadge statut={prospect.statut} />
+            <div>
+              <div className="text-[11px] uppercase tracking-wide font-bold text-text-muted">
+                Score solaire
+              </div>
+              <div
+                className="font-display text-4xl font-bold leading-none mt-1"
+                style={{ color: '#F5821F' }}
+              >
+                {prospect.score_solaire ?? '—'}
+                {prospect.score_solaire !== null && (
+                  <span className="text-base text-text-muted">/100</span>
+                )}
+              </div>
+              {prospect.score_solaire !== null && (
+                <div className="mt-2 h-2 rounded-full bg-background overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${prospect.score_solaire}%`,
+                      background:
+                        'linear-gradient(90deg, #F5821F, #D96B0A)',
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <MiniKpi
+                icon={Calendar}
+                label="Créé"
+                value={new Date(prospect.created_at).toLocaleDateString(
+                  'fr-FR',
+                )}
+              />
+              <MiniKpi
+                icon={Sun}
+                label="Qualité"
+                value={prospect.qualite_imagerie ?? '—'}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* === CONTACT === */}
+        <section>
+          <SectionTitle icon={Mail}>Contact</SectionTitle>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Info icon={Mail} label="Email" value={prospect.email ?? '—'} />
+            <Info
+              icon={Phone}
+              label="Téléphone"
+              value={prospect.telephone ?? '—'}
+            />
+          </div>
+        </section>
+
+        {/* === ÉTUDE TECHNIQUE === */}
+        {prospect.production_annuelle_kwh !== null && (
+          <section>
+            <SectionTitle icon={Sun}>Étude technique</SectionTitle>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <KV
+                icon={MapPin}
+                k="Surface toit"
+                v={`${prospect.surface_toit_m2 ?? '—'} m²`}
+              />
+              <KV
+                icon={Zap}
+                k="Puissance"
+                v={`${prospect.puissance_kwc ?? '—'} kWc`}
+              />
+              <KV
+                icon={Sun}
+                k="Production"
+                v={`${formatNumber(prospect.production_annuelle_kwh)} kWh/an`}
+              />
+              <KV
+                icon={Compass}
+                k="Orientation"
+                v={prospect.orientation_principale ?? '—'}
+              />
+              <KV
+                icon={Clock}
+                k="Ensoleillement"
+                v={
+                  prospect.heures_ensoleillement
+                    ? `${formatNumber(prospect.heures_ensoleillement)} h/an`
+                    : '—'
+                }
+              />
+              <KV
+                icon={Sun}
+                k="Panneaux"
+                v={
+                  prospect.nb_panneaux_recommande
+                    ? `${prospect.nb_panneaux_recommande}`
+                    : '—'
+                }
+              />
+              <KV
+                icon={Leaf}
+                k="CO₂ évité"
+                v={
+                  prospect.co2_evite_kg_an
+                    ? `${formatNumber(prospect.co2_evite_kg_an)} kg/an`
+                    : '—'
+                }
+              />
+              <KV
+                icon={MapPin}
+                k="Coordonnées"
+                v={
+                  prospect.latitude && prospect.longitude
+                    ? `${prospect.latitude.toFixed(4)}, ${prospect.longitude.toFixed(4)}`
+                    : '—'
+                }
+              />
+            </div>
+          </section>
         )}
 
-        {/* Statut */}
-        <div>
-          <label className="text-xs uppercase tracking-wide font-bold text-text-muted">
-            Statut
-          </label>
-          <div className="flex flex-wrap gap-1.5 mt-1.5">
+        {/* === FINANCIER === */}
+        {prospect.cout_installation_ttc !== null && (
+          <section>
+            <SectionTitle icon={Euro}>Financier</SectionTitle>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <KV
+                icon={Euro}
+                k="Coût TTC"
+                v={formatEuros(prospect.cout_installation_ttc)}
+              />
+              <KV
+                icon={TrendingUp}
+                k="Aides"
+                v={formatEuros(prospect.aides_totales ?? 0)}
+                accent="teal"
+              />
+              <KV
+                icon={Euro}
+                k="Reste à charge"
+                v={
+                  prospect.reste_a_charge
+                    ? formatEuros(prospect.reste_a_charge)
+                    : '—'
+                }
+                accent="orange"
+              />
+              <KV
+                icon={Zap}
+                k="Économie / an"
+                v={
+                  prospect.economie_annuelle
+                    ? formatEuros(prospect.economie_annuelle)
+                    : '—'
+                }
+                accent="teal"
+              />
+              <KV
+                icon={Clock}
+                k="ROI"
+                v={
+                  prospect.temps_retour_ans
+                    ? `${prospect.temps_retour_ans} ans`
+                    : '—'
+                }
+              />
+            </div>
+          </section>
+        )}
+
+        {/* === PROPOSITION === */}
+        {prospect.proposition_id && (
+          <section>
+            <SectionTitle icon={Send}>Proposition commerciale</SectionTitle>
+            <div
+              className="rounded-card p-4 flex flex-wrap items-center justify-between gap-3"
+              style={{
+                background: '#FEF0E6',
+                border: '1px solid #FCD7B4',
+              }}
+            >
+              <div>
+                <div className="font-semibold">
+                  N° {prospect.proposition_id}
+                </div>
+                <div className="text-xs text-text-muted mt-0.5">
+                  {vueProposition}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <a
+                  href={`/proposition/${prospect.proposition_id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-ghost"
+                >
+                  <ExternalLink className="w-4 h-4" /> Ouvrir
+                </a>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={copyLink}
+                >
+                  {copied ? (
+                    <Check className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
+                  {copied ? 'Lien copié' : 'Copier lien'}
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* === STATUT === */}
+        <section>
+          <SectionTitle>Statut commercial</SectionTitle>
+          <div className="flex flex-wrap gap-1.5">
             {STATUTS.map((s) => (
               <button
                 key={s}
@@ -329,53 +584,65 @@ function ProspectModal({
               </button>
             ))}
           </div>
-        </div>
+        </section>
 
-        {/* Notes */}
-        <div>
-          <label className="text-xs uppercase tracking-wide font-bold text-text-muted">
-            Notes
-          </label>
+        {/* === NOTES === */}
+        <section>
+          <SectionTitle>Notes commerciales</SectionTitle>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="input mt-1.5"
+            className="input"
             rows={4}
             placeholder="Notes internes sur ce prospect…"
           />
-        </div>
+        </section>
 
-        <div className="flex flex-wrap gap-2 justify-between pt-2 border-t border-border">
-          {prospect.proposition_id ? (
-            <div className="flex gap-2">
-              <a
-                href={`/proposition/${prospect.proposition_id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-ghost"
-              >
-                <ExternalLink className="w-4 h-4" /> Ouvrir proposition
-              </a>
-              <button type="button" className="btn btn-ghost" onClick={copyLink}>
-                {copied ? (
-                  <Check className="w-4 h-4 text-emerald-600" />
-                ) : (
-                  <Copy className="w-4 h-4" />
-                )}
-                {copied ? 'Lien copié' : 'Copier lien'}
-              </button>
-            </div>
-          ) : (
-            <span className="text-sm text-text-muted">
-              Pas encore de proposition générée
-            </span>
-          )}
+        {/* === ACTIONS === */}
+        <div className="flex justify-end gap-2 pt-3 border-t border-border">
+          <Button variant="ghost" onClick={onClose}>
+            Fermer
+          </Button>
           <Button onClick={save} loading={saving}>
             <Save className="w-4 h-4" /> Enregistrer
           </Button>
         </div>
       </div>
     </Modal>
+  );
+}
+
+function SectionTitle({
+  children,
+  icon: Icon,
+}: {
+  children: React.ReactNode;
+  icon?: typeof Mail;
+}) {
+  return (
+    <h4 className="text-xs uppercase tracking-wide font-bold text-text-muted mb-2 flex items-center gap-1.5">
+      {Icon && <Icon className="w-3.5 h-3.5" />}
+      {children}
+    </h4>
+  );
+}
+
+function MiniKpi({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Mail;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg p-2 bg-background">
+      <div className="text-[10px] uppercase tracking-wide text-text-muted font-semibold flex items-center gap-1">
+        <Icon className="w-3 h-3" /> {label}
+      </div>
+      <div className="font-semibold text-sm mt-0.5">{value}</div>
+    </div>
   );
 }
 
@@ -389,7 +656,7 @@ function Info({
   value: string;
 }) {
   return (
-    <div>
+    <div className="rounded-lg p-3 bg-background">
       <div className="text-xs uppercase tracking-wide font-bold text-text-muted flex items-center gap-1.5">
         <Icon className="w-3.5 h-3.5" /> {label}
       </div>
@@ -398,13 +665,31 @@ function Info({
   );
 }
 
-function KV({ k, v }: { k: string; v: string | number }) {
+function KV({
+  k,
+  v,
+  icon: Icon,
+  accent,
+}: {
+  k: string;
+  v: string | number;
+  icon?: typeof Mail;
+  accent?: 'orange' | 'teal';
+}) {
+  const color =
+    accent === 'teal' ? '#0D7C66' : accent === 'orange' ? '#F5821F' : '#1F2937';
   return (
     <div className="rounded-lg p-2.5 bg-background">
-      <div className="text-[11px] uppercase tracking-wide text-text-muted font-semibold">
+      <div className="text-[11px] uppercase tracking-wide text-text-muted font-semibold flex items-center gap-1">
+        {Icon && <Icon className="w-3 h-3" />}
         {k}
       </div>
-      <div className="font-display text-sm font-bold mt-0.5">{v}</div>
+      <div
+        className="font-display text-sm font-bold mt-0.5"
+        style={{ color }}
+      >
+        {v}
+      </div>
     </div>
   );
 }
