@@ -3,6 +3,7 @@ import { getSupabase, supabaseEnabled } from '@/lib/supabase';
 import { demoProspects } from '@/lib/demo-data';
 import { calculerFinancier } from '@/lib/financial';
 import { genererPropositionHTML } from '@/lib/proposition';
+import { isUuid } from '@/lib/uuid';
 import { PropositionViewer } from './PropositionViewer';
 import type { Prospect, PropositionData } from '@/types';
 
@@ -19,11 +20,12 @@ async function loadProspect(id: string): Promise<Prospect | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
 
-  const { data } = await supabase
-    .from('prospects')
-    .select('*')
-    .or(`id.eq.${id},proposition_id.eq.${id}`)
-    .maybeSingle();
+  const query = supabase.from('prospects').select('*');
+  const { data } = isUuid(id)
+    ? await query
+        .or(`id.eq.${id},proposition_id.eq.${id}`)
+        .maybeSingle()
+    : await query.eq('proposition_id', id).maybeSingle();
   return (data as Prospect | null) ?? null;
 }
 

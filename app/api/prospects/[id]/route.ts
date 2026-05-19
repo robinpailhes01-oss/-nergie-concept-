@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabase, supabaseEnabled } from '@/lib/supabase';
 import { demoProspects } from '@/lib/demo-data';
+import { isUuid } from '@/lib/uuid';
 import type { Prospect } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -31,12 +32,13 @@ export async function GET(_req: Request, { params }: Ctx) {
     return NextResponse.json({ error: 'Supabase indisponible' }, { status: 500 });
   }
 
-  // On accepte id ou proposition_id
-  const { data, error } = await supabase
-    .from('prospects')
-    .select('*')
-    .or(`id.eq.${params.id},proposition_id.eq.${params.id}`)
-    .maybeSingle();
+  // On accepte id (UUID) ou proposition_id (texte)
+  const query = supabase.from('prospects').select('*');
+  const { data, error } = isUuid(params.id)
+    ? await query
+        .or(`id.eq.${params.id},proposition_id.eq.${params.id}`)
+        .maybeSingle()
+    : await query.eq('proposition_id', params.id).maybeSingle();
 
   if (error || !data) {
     return NextResponse.json({ error: 'Introuvable' }, { status: 404 });
