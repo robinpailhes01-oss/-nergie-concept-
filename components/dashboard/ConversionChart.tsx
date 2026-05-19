@@ -9,19 +9,14 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import type { WeeklyConversion } from '@/lib/chart-data';
 
-const DATA = [
-  { sem: 'S14', taux: 18 },
-  { sem: 'S15', taux: 22 },
-  { sem: 'S16', taux: 21 },
-  { sem: 'S17', taux: 26 },
-  { sem: 'S18', taux: 28 },
-  { sem: 'S19', taux: 31 },
-  { sem: 'S20', taux: 29 },
-  { sem: 'S21', taux: 34 },
-];
+interface Props {
+  data: WeeklyConversion[];
+  moyenne: number;
+}
 
-export function ConversionChart() {
+export function ConversionChart({ data, moyenne }: Props) {
   return (
     <div className="card">
       <div className="flex items-start justify-between mb-4">
@@ -30,19 +25,19 @@ export function ConversionChart() {
             Taux de conversion
           </h3>
           <p className="text-sm text-text-muted mt-0.5">
-            % propositions → signatures, 8 dernières semaines
+            % propositions → signatures, {data.length} dernières semaines
           </p>
         </div>
         <div
           className="text-3xl font-display font-bold"
           style={{ color: '#F5821F' }}
         >
-          34%
+          {moyenne}%
         </div>
       </div>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={DATA}>
+          <LineChart data={data}>
             <defs>
               <linearGradient id="gradLine" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#F5821F" stopOpacity={0.15} />

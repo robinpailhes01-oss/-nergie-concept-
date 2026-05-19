@@ -187,4 +187,5 @@ export interface PropositionData {
     qualite_imagerie: string;
   };
   financier: FinancialAnalysis;
+  photo_satellite_url: string | null;
 }

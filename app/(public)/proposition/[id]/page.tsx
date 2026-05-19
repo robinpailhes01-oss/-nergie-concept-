@@ -3,6 +3,7 @@ import { getSupabase, supabaseEnabled } from '@/lib/supabase';
 import { demoProspects } from '@/lib/demo-data';
 import { calculerFinancier } from '@/lib/financial';
 import { genererPropositionHTML } from '@/lib/proposition';
+import { getProxiedSatelliteUrl } from '@/lib/satellite';
 import { isUuid } from '@/lib/uuid';
 import { PropositionViewer } from './PropositionViewer';
 import type { Prospect, PropositionData } from '@/types';
@@ -53,6 +54,11 @@ function buildHTML(prospect: Prospect): string {
       qualite_imagerie: prospect.qualite_imagerie ?? 'HIGH',
     },
     financier: fin,
+    photo_satellite_url: getProxiedSatelliteUrl(
+      prospect.latitude,
+      prospect.longitude,
+      { width: 800, height: 420, zoom: 20 },
+    ),
   };
   return genererPropositionHTML(data);
 }

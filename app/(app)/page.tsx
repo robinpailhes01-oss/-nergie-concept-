@@ -7,6 +7,11 @@ import { AnalyseWidget } from '@/components/dashboard/AnalyseWidget';
 import { formatEuros } from '@/lib/financial';
 import { demoProspects, demoStats } from '@/lib/demo-data';
 import { supabaseEnabled, getSupabase } from '@/lib/supabase';
+import {
+  buildMonthly,
+  buildWeeklyConversion,
+  conversionMoyenne,
+} from '@/lib/chart-data';
 import type { DashboardStats, Prospect } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -14,34 +19,50 @@ export const dynamic = 'force-dynamic';
 async function loadData(): Promise<{
   stats: DashboardStats;
   prospects: Prospect[];
+  allProspects: Prospect[];
   demo: boolean;
 }> {
   if (!supabaseEnabled) {
-    return { stats: demoStats(), prospects: demoProspects, demo: true };
+    return {
+      stats: demoStats(),
+      prospects: demoProspects.slice(0, 10),
+      allProspects: demoProspects,
+      demo: true,
+    };
   }
   const supabase = getSupabase();
   if (!supabase) {
-    return { stats: demoStats(), prospects: demoProspects, demo: true };
+    return {
+      stats: demoStats(),
+      prospects: demoProspects.slice(0, 10),
+      allProspects: demoProspects,
+      demo: true,
+    };
   }
 
-  const [{ data: statsRow }, { data: prospectsRows }] = await Promise.all([
+  const [{ data: statsRow }, { data: allRows }] = await Promise.all([
     supabase.from('dashboard_stats').select('*').maybeSingle(),
     supabase
       .from('prospects')
       .select('*')
-      .order('created_at', { ascending: false })
-      .limit(10),
+      .order('created_at', { ascending: false }),
   ]);
+
+  const allProspects = (allRows as Prospect[] | null) ?? demoProspects;
 
   return {
     stats: (statsRow as DashboardStats | null) ?? demoStats(),
-    prospects: (prospectsRows as Prospect[] | null) ?? demoProspects,
+    prospects: allProspects.slice(0, 10),
+    allProspects,
     demo: false,
   };
 }
 
 export default async function DashboardPage() {
-  const { stats, prospects, demo } = await loadData();
+  const { stats, prospects, allProspects, demo } = await loadData();
+  const monthly = buildMonthly(allProspects, 7);
+  const weekly = buildWeeklyConversion(allProspects, 8);
+  const moyenne = conversionMoyenne(weekly);
 
   return (
     <div className="max-w-7xl mx-auto stagger">
@@ -96,8 +117,8 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <ProspectsChart />
-        <ConversionChart />
+        <ProspectsChart data={monthly} />
+        <ConversionChart data={weekly} moyenne={moyenne} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

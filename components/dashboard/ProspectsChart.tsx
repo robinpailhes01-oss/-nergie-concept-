@@ -10,31 +10,26 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import type { MonthlyBucket } from '@/lib/chart-data';
 
-const DATA = [
-  { mois: 'Nov',  prospects: 12, propositions: 8,  signes: 2 },
-  { mois: 'Déc',  prospects: 18, propositions: 12, signes: 3 },
-  { mois: 'Jan',  prospects: 22, propositions: 15, signes: 4 },
-  { mois: 'Fév',  prospects: 28, propositions: 19, signes: 6 },
-  { mois: 'Mar',  prospects: 35, propositions: 24, signes: 7 },
-  { mois: 'Avr',  prospects: 42, propositions: 28, signes: 9 },
-  { mois: 'Mai',  prospects: 38, propositions: 26, signes: 8 },
-];
+interface Props {
+  data: MonthlyBucket[];
+}
 
-export function ProspectsChart() {
+export function ProspectsChart({ data }: Props) {
   return (
     <div className="card">
       <div className="flex items-start justify-between mb-4">
         <div>
           <h3 className="font-display text-lg font-bold">Activité mensuelle</h3>
           <p className="text-sm text-text-muted mt-0.5">
-            Prospects, propositions et signatures sur 7 mois
+            Prospects, propositions et signatures sur {data.length} mois
           </p>
         </div>
       </div>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={DATA} barGap={4} barCategoryGap="20%">
+          <BarChart data={data} barGap={4} barCategoryGap="20%">
             <CartesianGrid stroke="#F3F4F6" vertical={false} />
             <XAxis
               dataKey="mois"
@@ -46,6 +41,7 @@ export function ProspectsChart() {
               tick={{ fill: '#6B7280', fontSize: 12 }}
               axisLine={false}
               tickLine={false}
+              allowDecimals={false}
             />
             <Tooltip
               cursor={{ fill: 'rgba(245, 130, 31, 0.05)' }}

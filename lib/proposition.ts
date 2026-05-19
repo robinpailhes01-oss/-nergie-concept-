@@ -7,7 +7,8 @@ import type { PropositionData } from '@/types';
 import { formatEuros, formatNumber } from './financial';
 
 export function genererPropositionHTML(data: PropositionData): string {
-  const { prospect, numero, date, toiture, financier } = data;
+  const { prospect, numero, date, toiture, financier, photo_satellite_url } =
+    data;
 
   const economieJalons = [1, 5, 10, 15, 20, 25]
     .map((annee) => {
@@ -102,6 +103,44 @@ export function genererPropositionHTML(data: PropositionData): string {
   }
 
   .lead { color: #6B7280; font-size: 16px; margin-bottom: 32px; }
+
+  .hero-sat {
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    margin: 24px 0;
+    box-shadow: 0 4px 16px rgba(15,25,35,0.08);
+    border: 1px solid #E5E7EB;
+  }
+  .hero-sat img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 420px;
+    object-fit: cover;
+  }
+  .hero-sat-caption {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    background: rgba(15, 25, 35, 0.85);
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    backdrop-filter: blur(6px);
+  }
+  .hero-sat-caption .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #F5821F;
+    box-shadow: 0 0 0 3px rgba(245, 130, 31, 0.3);
+  }
 
   .resume {
     display: grid;
@@ -330,6 +369,18 @@ export function genererPropositionHTML(data: PropositionData): string {
       Préparée pour ${prospect.prenom} ${prospect.nom} —
       ${prospect.adresse}, ${prospect.ville}
     </p>
+
+    ${
+      photo_satellite_url
+        ? `<div class="hero-sat">
+        <img src="${photo_satellite_url}" alt="Vue satellite de votre bâtiment" crossorigin="anonymous" />
+        <div class="hero-sat-caption">
+          <span class="dot"></span>
+          Vue satellite de votre bâtiment · analyse Google Solar API
+        </div>
+      </div>`
+        : ''
+    }
 
     <div class="resume">
       <div class="chiffre">

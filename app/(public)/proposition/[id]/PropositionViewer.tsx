@@ -39,26 +39,51 @@ export function PropositionViewer({
     if (!contentRef.current) return;
     setDownloadingPdf(true);
     try {
-      const { default: jsPDF } = await import('jspdf');
-      const doc = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
-      const margin = 36;
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const usableWidth = pageWidth - margin * 2;
-      const text = contentRef.current.innerText;
-      doc.setFontSize(11);
-      const lines = doc.splitTextToSize(text, usableWidth);
-      doc.setFont('helvetica');
-      const pageHeight = doc.internal.pageSize.getHeight();
-      let y = margin;
-      lines.forEach((line: string) => {
-        if (y > pageHeight - margin) {
-          doc.addPage();
-          y = margin;
-        }
-        doc.text(line, margin, y);
-        y += 14;
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+
+      const pages = contentRef.current.querySelectorAll<HTMLElement>('.page');
+      if (pages.length === 0) return;
+
+      const pdf = new jsPDF({
+        unit: 'mm',
+        format: 'a4',
+        compress: true,
+        orientation: 'portrait',
       });
-      doc.save(`proposition-${propositionId}.pdf`);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i];
+        if (!page) continue;
+
+        const canvas = await html2canvas(page, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+        });
+        const imgData = canvas.toDataURL('image/jpeg', 0.92);
+
+        const ratio = canvas.width / canvas.height;
+        let imgWidth = pdfWidth;
+        let imgHeight = pdfWidth / ratio;
+        if (imgHeight > pdfHeight) {
+          imgHeight = pdfHeight;
+          imgWidth = pdfHeight * ratio;
+        }
+        const offsetX = (pdfWidth - imgWidth) / 2;
+        const offsetY = (pdfHeight - imgHeight) / 2;
+
+        if (i > 0) pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', offsetX, offsetY, imgWidth, imgHeight);
+      }
+
+      pdf.save(`proposition-${propositionId}.pdf`);
     } finally {
       setDownloadingPdf(false);
     }
