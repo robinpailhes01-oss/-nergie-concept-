@@ -1,7 +1,6 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { Outfit, Plus_Jakarta_Sans } from 'next/font/google';
-import { Sidebar } from '@/components/layout/Sidebar';
 
 const outfit = Outfit({
   subsets: ['latin'],
@@ -30,14 +29,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr" className={`${outfit.variable} ${jakarta.variable}`}>
-      <body>
-        <div className="min-h-screen">
-          <Sidebar />
-          <main className="md:ml-[240px] min-h-screen p-6 md:p-10">
-            {children}
-          </main>
-        </div>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
