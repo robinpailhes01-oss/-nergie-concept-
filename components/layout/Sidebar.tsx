@@ -7,11 +7,13 @@ import {
   ScanSearch,
   Users,
   Sun,
+  Sparkles,
 } from 'lucide-react';
 
 const NAV = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/analyse', label: 'Analyse', icon: ScanSearch },
+  { href: '/prospection', label: 'Prospection', icon: Sparkles },
   { href: '/prospects', label: 'Prospects', icon: Users },
 ];
 
