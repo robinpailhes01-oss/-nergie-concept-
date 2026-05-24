@@ -157,6 +157,7 @@ function buildDemo(input: DemoInput): Omit<SolarApiResponse, 'demo'> {
       qualite,
     ),
     photo_satellite_url: getStaticSatelliteUrl(input.lat, input.lng),
+    imagery_date: null,
   };
 }
 
@@ -164,6 +165,21 @@ function pickDemo(address: string): SolarApiResponse {
   const match = DEMO_FIXTURES.find((f) => f.match.test(address));
   const base = match ? match.data : DEFAULT_DEMO;
   return { demo: true, ...base };
+}
+
+const MOIS_FR = [
+  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+];
+
+function formatImageryDate(
+  d?: { year?: number; month?: number; day?: number },
+): string | null {
+  if (!d?.year) return null;
+  const mois = d.month && d.month >= 1 && d.month <= 12
+    ? `${MOIS_FR[d.month - 1]} `
+    : '';
+  return `${mois}${d.year}`;
 }
 
 // ============================================================
@@ -191,6 +207,7 @@ interface RoofSegment {
 
 interface BuildingInsightsResponse {
   imageryQuality?: 'HIGH' | 'MEDIUM' | 'LOW';
+  imageryDate?: { year?: number; month?: number; day?: number };
   solarPotential?: {
     maxArrayPanelsCount?: number;
     maxArrayAreaMeters2?: number;
@@ -383,6 +400,7 @@ export async function GET(req: Request) {
       qualite,
       score_solaire: calculerScoreSolaire(heures, orientation, surface, qualite),
       photo_satellite_url: getStaticSatelliteUrl(geo.lat, geo.lng),
+      imagery_date: formatImageryDate(insights.imageryDate),
     };
 
     return NextResponse.json(response);

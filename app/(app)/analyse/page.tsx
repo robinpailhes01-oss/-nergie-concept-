@@ -340,10 +340,20 @@ function ToitureCard({ data }: { data: SolarApiResponse }) {
           zoom={20}
           alt={`Vue satellite — ${data.geocode.adresse}`}
         />
-        <div className="text-xs text-text-muted mt-1.5 flex items-center gap-1">
-          <MapPin className="w-3 h-3" />
-          {data.geocode.adresse}, {data.geocode.ville}{' '}
-          {data.geocode.code_postal}
+        <div className="text-xs text-text-muted mt-1.5 flex items-center gap-2 flex-wrap">
+          <span className="flex items-center gap-1">
+            <MapPin className="w-3 h-3" />
+            {data.geocode.adresse}, {data.geocode.ville}{' '}
+            {data.geocode.code_postal}
+          </span>
+          {data.imagery_date && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold"
+              style={{ background: '#F3F4F6', color: '#6B7280' }}
+            >
+              📅 Image satellite : {data.imagery_date}
+            </span>
+          )}
         </div>
       </div>
 
