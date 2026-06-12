@@ -8,6 +8,7 @@
 
 import { NextResponse } from 'next/server';
 import { EFFECTIF_LABELS } from '@/lib/entreprises';
+import { fetchRetry } from '@/lib/fetch-retry';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 20;
@@ -103,10 +104,12 @@ export async function GET(req: Request) {
   if (secteur) url.searchParams.set('section_activite_principale', secteur);
   url.searchParams.set('etat_administratif', 'A');
   url.searchParams.set('est_siege', 'true');
-  url.searchParams.set('per_page', String(limit));
+  // Toujours demander le max : les sièges hors 30/34 (chaînes nationales
+  // avec un établissement local) sont filtrés après coup
+  url.searchParams.set('per_page', '25');
 
   try {
-    const r = await fetch(url.toString(), {
+    const r = await fetchRetry(url.toString(), {
       cache: 'no-store',
       headers: { 'User-Agent': 'energies-concept-mvp' },
     });
@@ -159,7 +162,8 @@ export async function GET(req: Request) {
           },
         };
       })
-      .filter((x): x is EntrepriseAddress => x !== null);
+      .filter((x): x is EntrepriseAddress => x !== null)
+      .slice(0, limit);
 
     return NextResponse.json({
       entreprises,

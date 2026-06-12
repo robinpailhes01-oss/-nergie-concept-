@@ -11,6 +11,7 @@
 // ============================================================
 
 import { NextResponse } from 'next/server';
+import { fetchRetry } from '@/lib/fetch-retry';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -54,7 +55,7 @@ async function banSearch(q: string, type?: string): Promise<BanFeature[]> {
   url.searchParams.set('autocomplete', '0');
   if (type) url.searchParams.set('type', type);
 
-  const r = await fetch(url.toString(), {
+  const r = await fetchRetry(url.toString(), {
     cache: 'no-store',
     headers: { 'User-Agent': 'energies-concept-mvp' },
   });

@@ -26,10 +26,17 @@ import {
   EFFECTIF_LABELS,
   SECTION_LABELS,
   SECTIONS_SOLAR_PRIORITAIRES,
+  nomsCorrespondent,
 } from '@/lib/entreprises';
 import type { Prospect, SolarApiResponse } from '@/types';
 
-type Mode = 'particuliers' | 'entreprises';
+type Mode = 'particuliers' | 'entreprises' | 'equipes';
+
+interface InstallationConnue {
+  nom: string;
+  puissance_kw: number;
+  annee: number | null;
+}
 
 interface EntrepriseMeta {
   siren: string;
@@ -51,6 +58,7 @@ interface ScannedAddress {
   solar?: SolarApiResponse;
   prospect_id?: string;
   entreprise?: EntrepriseMeta;
+  deja_equipee?: InstallationConnue;
 }
 
 interface FoundStreet {
@@ -104,9 +112,28 @@ export default function ProspectionPage() {
         >
           Particuliers
         </ModeTab>
+        <ModeTab
+          active={mode === 'equipes'}
+          icon={Sun}
+          onClick={() => setMode('equipes')}
+        >
+          Déjà équipés
+          <span
+            className="ml-2 text-[10px] px-1.5 py-0.5 rounded font-bold"
+            style={{ background: '#0D7C66', color: '#fff' }}
+          >
+            Maintenance
+          </span>
+        </ModeTab>
       </div>
 
-      {mode === 'entreprises' ? <ScannerEntreprises /> : <ScannerParticuliers />}
+      {mode === 'entreprises' ? (
+        <ScannerEntreprises />
+      ) : mode === 'equipes' ? (
+        <ScannerEquipes />
+      ) : (
+        <ScannerParticuliers />
+      )}
     </div>
   );
 }
@@ -193,15 +220,49 @@ function ScannerEntreprises() {
         );
         return;
       }
-      setAddresses(
-        json.entreprises.map((e) => ({ ...e, status: 'pending' as const })),
-      );
+      const liste = json.entreprises.map((e) => ({
+        ...e,
+        status: 'pending' as const,
+      }));
+      setAddresses(liste);
       setTotalDispo(json.total);
+      void flagDejaEquipees(liste);
     } catch {
       setError('Recherche entreprises impossible.');
     } finally {
       setSearching(false);
     }
+  }
+
+  async function flagDejaEquipees(liste: ScannedAddress[]) {
+    const villes = [...new Set(liste.map((a) => a.city).filter(Boolean))];
+    const parVille = new Map<string, InstallationConnue[]>();
+    await Promise.all(
+      villes.map(async (ville) => {
+        try {
+          const r = await fetch(
+            `/api/installations-existantes?names_only=1&commune=${encodeURIComponent(ville)}`,
+          );
+          if (!r.ok) return;
+          const j = (await r.json()) as {
+            installations: InstallationConnue[];
+          };
+          parVille.set(ville, j.installations ?? []);
+        } catch {
+          /* flag best-effort */
+        }
+      }),
+    );
+    setAddresses((all) =>
+      all.map((a) => {
+        const installs = parVille.get(a.city) ?? [];
+        const nomCible = a.entreprise?.nom ?? '';
+        const match = installs.find((inst) =>
+          nomsCorrespondent(nomCible, inst.nom),
+        );
+        return match ? { ...a, deja_equipee: match } : a;
+      }),
+    );
   }
 
   async function scan() {
@@ -684,6 +745,328 @@ function ScannerParticuliers() {
 }
 
 // ============================================================
+// Mode DÉJÀ ÉQUIPÉS (registre ODRÉ + jointure SIRENE)
+// ============================================================
+
+interface InstallationExistante {
+  nom_installation: string;
+  commune: string;
+  code_insee: string | null;
+  departement: string;
+  puissance_kw: number;
+  date_mise_en_service: string | null;
+  annee: number | null;
+  entreprise: {
+    nom: string;
+    siren: string;
+    adresse: string;
+    code_postal: string;
+    ville: string;
+    lat: number | null;
+    lng: number | null;
+    naf: string;
+    confiance: 'haute' | 'moyenne';
+  } | null;
+}
+
+function ScannerEquipes() {
+  const [dept, setDept] = useState('34');
+  const [commune, setCommune] = useState('');
+  const [tri, setTri] = useState('anciennes');
+  const [limit, setLimit] = useState(15);
+  const [items, setItems] = useState<InstallationExistante[]>([]);
+  const [total, setTotal] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [added, setAdded] = useState<Record<string, boolean>>({});
+
+  async function search() {
+    setLoading(true);
+    setError(null);
+    setItems([]);
+    setTotal(null);
+    try {
+      const qs = new URLSearchParams({
+        dept,
+        tri,
+        limit: String(limit),
+      });
+      if (commune.trim()) qs.set('commune', commune.trim());
+      const r = await fetch(`/api/installations-existantes?${qs.toString()}`);
+      const json = (await r.json()) as
+        | { installations: InstallationExistante[]; total: number }
+        | { error: string };
+      if (!r.ok || !('installations' in json)) {
+        setError('error' in json ? json.error : 'Erreur registre');
+        return;
+      }
+      if (json.installations.length === 0) {
+        setError('Aucune installation trouvée avec ces critères.');
+        return;
+      }
+      setItems(json.installations);
+      setTotal(json.total);
+    } catch {
+      setError('Recherche impossible. Réessayer.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function addToPipeline(item: InstallationExistante) {
+    const key = item.nom_installation + item.commune;
+    const ent = item.entreprise;
+    const age = item.annee ? new Date().getFullYear() - item.annee : null;
+    const notes = `Lead MAINTENANCE / EXTENSION — installation solaire existante.
+Installation : ${item.nom_installation}
+Puissance : ${Math.round(item.puissance_kw)} kW · Mise en service : ${item.date_mise_en_service ?? 'inconnue'}${age !== null ? ` (${age} ans)` : ''}
+Source : registre national ODRÉ${ent ? `
+Entreprise SIRENE : ${ent.nom} (SIREN ${ent.siren}, confiance ${ent.confiance})` : ''}
+Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
+    const payload = {
+      nom: ent?.nom ?? item.nom_installation,
+      prenom: '(B2B équipé)',
+      email: null,
+      telephone: null,
+      adresse: ent?.adresse ?? item.commune,
+      ville: ent?.ville ?? item.commune,
+      code_postal: ent?.code_postal ?? null,
+      latitude: ent?.lat ?? null,
+      longitude: ent?.lng ?? null,
+      surface_toit_m2: null,
+      nb_panneaux_recommande: null,
+      production_annuelle_kwh: null,
+      heures_ensoleillement: null,
+      orientation_principale: null,
+      score_solaire: null,
+      qualite_imagerie: null,
+      puissance_kwc: Math.round(item.puissance_kw),
+      cout_installation_ttc: null,
+      aides_totales: null,
+      reste_a_charge: null,
+      economie_annuelle: null,
+      temps_retour_ans: null,
+      co2_evite_kg_an: null,
+      statut: 'nouveau' as const,
+      notes,
+    };
+    const r = await fetch('/api/prospects', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (r.ok) setAdded((a) => ({ ...a, [key]: true }));
+  }
+
+  return (
+    <>
+      <div
+        className="card mb-6"
+        style={{ background: '#ECFDF5', border: '1px solid #A7F3D0' }}
+      >
+        <p className="text-sm" style={{ color: '#065F46' }}>
+          <strong>Entreprises déjà équipées en solaire</strong> — source :
+          registre national des installations (ODRÉ / Enedis, open data).
+          Cibles idéales pour la <strong>maintenance, le remplacement
+          d'onduleurs, l'extension ou l'ajout de batteries</strong>. Le
+          registre donne la commune ; l'adresse exacte est retrouvée
+          automatiquement via SIRENE quand le nom correspond à une entreprise.
+        </p>
+      </div>
+
+      <div className="card mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <select
+            value={dept}
+            onChange={(e) => setDept(e.target.value)}
+            className="input h-12"
+          >
+            <option value="34">Hérault (34)</option>
+            <option value="30">Gard (30)</option>
+            <option value="all">Les deux</option>
+          </select>
+          <div className="relative md:col-span-2">
+            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+            <input
+              value={commune}
+              onChange={(e) => setCommune(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void search()}
+              placeholder="Commune (optionnel) — ex : Sète"
+              className="input pl-9 h-12"
+            />
+          </div>
+          <select
+            value={tri}
+            onChange={(e) => setTri(e.target.value)}
+            className="input h-12"
+          >
+            <option value="anciennes">Plus anciennes (maintenance)</option>
+            <option value="recentes">Plus récentes</option>
+            <option value="puissance">Plus puissantes</option>
+          </select>
+          <select
+            value={limit}
+            onChange={(e) => setLimit(Number(e.target.value))}
+            className="input h-12"
+          >
+            <option value={10}>10 résultats</option>
+            <option value={15}>15 résultats</option>
+            <option value={20}>20 résultats</option>
+          </select>
+        </div>
+        <div className="flex justify-end mt-3">
+          <Button onClick={search} loading={loading}>
+            {!loading && <Search className="w-4 h-4" />} Rechercher les installations
+          </Button>
+        </div>
+        <p className="text-xs text-text-muted mt-3">
+          ☀️ Plage 36 kW – 2 MW : toitures professionnelles (les fermes au sol
+          géantes et les installations résidentielles anonymisées sont exclues).
+        </p>
+      </div>
+
+      {error && <ErrorBanner>{error}</ErrorBanner>}
+
+      {items.length > 0 && (
+        <>
+          {total !== null && total > items.length && (
+            <p className="text-sm text-text-muted mb-3">
+              {total} installations correspondent au total — affichage des{' '}
+              {items.length} premières.
+            </p>
+          )}
+          <div className="card">
+            <div className="overflow-x-auto -mx-6 px-6">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs font-semibold text-text-muted uppercase tracking-wide border-b border-border">
+                    <th className="pb-3 pr-4">Entreprise / installation</th>
+                    <th className="pb-3 pr-4">Adresse</th>
+                    <th className="pb-3 pr-4">Puissance</th>
+                    <th className="pb-3 pr-4">Mise en service</th>
+                    <th className="pb-3">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => {
+                    const key = item.nom_installation + item.commune;
+                    const ent = item.entreprise;
+                    const age = item.annee
+                      ? new Date().getFullYear() - item.annee
+                      : null;
+                    return (
+                      <tr
+                        key={key}
+                        className="border-b border-border/60 last:border-0"
+                      >
+                        <td className="py-3 pr-4 max-w-xs">
+                          <div className="flex items-center gap-3">
+                            {ent?.lat && ent?.lng ? (
+                              <Thumbnail lat={ent.lat} lng={ent.lng} />
+                            ) : (
+                              <div
+                                className="w-12 h-12 rounded-lg shrink-0 flex items-center justify-center"
+                                style={{ background: '#ECFDF5' }}
+                              >
+                                <Sun
+                                  className="w-5 h-5"
+                                  style={{ color: '#0D7C66' }}
+                                />
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <div className="font-semibold truncate">
+                                {ent?.nom ?? item.nom_installation}
+                              </div>
+                              {ent && (
+                                <div className="text-[10px] text-text-muted">
+                                  SIREN {ent.siren} ·{' '}
+                                  <span
+                                    style={{
+                                      color:
+                                        ent.confiance === 'haute'
+                                          ? '#0D7C66'
+                                          : '#D97706',
+                                    }}
+                                  >
+                                    match {ent.confiance}
+                                  </span>
+                                </div>
+                              )}
+                              {ent && ent.nom !== item.nom_installation && (
+                                <div className="text-[10px] text-text-muted truncate">
+                                  Installation : {item.nom_installation}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 pr-4 text-xs">
+                          {ent?.adresse ? (
+                            <span className="font-medium">{ent.adresse}</span>
+                          ) : (
+                            <span className="text-text-muted">
+                              {item.commune} (commune seule —{' '}
+                              <a
+                                href={`https://www.google.com/maps/search/${encodeURIComponent(`${item.nom_installation} ${item.commune}`)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="underline"
+                              >
+                                chercher sur Maps
+                              </a>
+                              )
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span className="font-display font-bold">
+                            {Math.round(item.puissance_kw)} kW
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 text-xs">
+                          {item.annee ?? '—'}
+                          {age !== null && age >= 8 && (
+                            <span
+                              className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold"
+                              style={{ background: '#FEF0E6', color: '#D96B0A' }}
+                            >
+                              {age} ans
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3">
+                          {added[key] ? (
+                            <Link
+                              href="/prospects"
+                              className="inline-flex items-center gap-1.5 text-emerald-700 text-sm font-semibold"
+                            >
+                              <Check className="w-4 h-4" /> Ajouté
+                            </Link>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => addToPipeline(item)}
+                              className="btn btn-ghost py-1.5 px-3 text-xs"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> Pipeline
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// ============================================================
 // Composants partagés
 // ============================================================
 
@@ -914,6 +1297,17 @@ function RowEntreprise({
             {ent?.siren && (
               <div className="text-[10px] text-text-muted mt-0.5">
                 SIREN {ent.siren} · {ent.categorie}
+              </div>
+            )}
+            {address.deja_equipee && (
+              <div
+                className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold"
+                style={{ background: '#FEE2E2', color: '#991B1B' }}
+              >
+                ⚠️ Déjà équipée ({Math.round(address.deja_equipee.puissance_kw)} kW
+                {address.deja_equipee.annee
+                  ? `, ${address.deja_equipee.annee}`
+                  : ''})
               </div>
             )}
           </div>

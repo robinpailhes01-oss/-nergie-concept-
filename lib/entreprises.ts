@@ -60,3 +60,44 @@ export const CATEGORIES = [
   { code: 'ETI', label: 'ETI (250-4999 sal.)' },
   { code: 'GE', label: 'Grandes (5000+ sal.)' },
 ];
+
+// ============================================================
+// Normalisation / matching de noms (registre ODRÉ ↔ SIRENE)
+// ============================================================
+
+// Formes juridiques et mots génériques à ignorer dans les comparaisons
+const MOTS_VIDES = new Set([
+  'SARL', 'SAS', 'SASU', 'SCI', 'SCEA', 'EARL', 'EURL', 'SA', 'SNC',
+  'STE', 'SOCIETE', 'ETS', 'ETABLISSEMENTS', 'GROUPE', 'HOLDING',
+  'TOITURE', 'TOITURES', 'PV', 'SOLAIRE', 'PHOTOVOLTAIQUE', 'CENTRALE',
+  'PARC', 'BAT', 'BATIMENT', 'NORD', 'SUD', 'EST', 'OUEST', 'REC',
+  'HTA', 'BT', 'FILS', 'ET', 'DE', 'DU', 'DES', 'LA', 'LE', 'LES',
+]);
+
+function sansAccents(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+export function tokensSignificatifs(nom: string): string[] {
+  return sansAccents(nom.toUpperCase())
+    .split(/[^A-Z0-9]+/)
+    .filter((t) => t.length >= 3 && !MOTS_VIDES.has(t) && !/^\d+$/.test(t));
+}
+
+// Nettoie un nom d'installation ODRÉ pour requêter SIRENE
+// ("AFRD88_6542_SCI BENANGE_REC_1" → "BENANGE")
+export function nettoyerNomInstallation(nom: string): string {
+  return tokensSignificatifs(nom).slice(0, 3).join(' ');
+}
+
+// Match conservateur : un token significatif de ≥ 5 caractères en
+// commun, ou tous les tokens de l'un contenus dans l'autre.
+export function nomsCorrespondent(a: string, b: string): boolean {
+  const ta = tokensSignificatifs(a);
+  const tb = tokensSignificatifs(b);
+  if (ta.length === 0 || tb.length === 0) return false;
+  const setB = new Set(tb);
+  const communs = ta.filter((t) => setB.has(t));
+  if (communs.some((t) => t.length >= 5)) return true;
+  return communs.length >= 2;
+}
