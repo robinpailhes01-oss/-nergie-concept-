@@ -428,13 +428,15 @@ export function genererPropositionHTML(data: PropositionData): string {
   <div class="page">
     <h2>Notre recommandation</h2>
     <div class="recommandation">
-      <h2>Installation ${financier.kwc} kWc</h2>
-      <p>Dimensionnée pour couvrir environ 80 % de votre consommation,
-        avec autoconsommation et revente du surplus.</p>
+      <h2>Kit ${financier.kwc} kWc — Photovoltaïque + Micro-onduleurs</h2>
+      <p>Dimensionné pour couvrir environ 80 % de votre consommation,
+        avec autoconsommation et revente du surplus. Micro-onduleurs inclus
+        (1 par panneau) pour un suivi panneau par panneau et une production
+        optimale même en cas d'ombrage partiel.</p>
       <div class="reco-grid">
         <div class="reco-item">
           <div class="val">${financier.nb_panneaux}</div>
-          <div class="lab">panneaux installés</div>
+          <div class="lab">panneaux 500 Wc + micro-onduleurs</div>
         </div>
         <div class="reco-item">
           <div class="val">${financier.kwc} kWc</div>

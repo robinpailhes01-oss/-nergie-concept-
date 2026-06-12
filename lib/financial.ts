@@ -2,8 +2,8 @@
 // Énergies Concept — Calculs financiers France 2026
 // ============================================================
 //
-// Source des tarifs : arrêté tarifaire S1 2026 (CRE), barème TVA
-// installations photovoltaïques < 9 kWc et > 9 kWc.
+// Source des tarifs réglementaires : arrêté tarifaire S1 2026 (CRE).
+// Source de la grille de prix produit : Énergies Concept (interne).
 
 import type {
   FinancialAnalysis,
@@ -25,20 +25,52 @@ export const HAUSSE_TARIF_PAR_AN = 0.03;
 export const CO2_FRANCE_KG_PAR_KWH = 0.0571;
 export const CONSO_FOYER_MOYEN_KWH = 4500;
 
-// Coût installation HT par kWc (€/kWc, marché français 2026)
-const COUT_PAR_KWC_HT: Record<'petit' | 'grand', number> = {
-  petit: 2200,   // ≤ 3 kWc
-  grand: 2000,   // > 3 kWc, dégressif via barème
-};
+// Puissance unitaire panneau (Wc) — kits Énergies Concept
+const PUISSANCE_PANNEAU_WC = 500;
 
-// Puissance unitaire panneau (Wc)
-const PUISSANCE_PANNEAU_WC = 425;
-
-// Surface unitaire panneau (m²)
-const SURFACE_PANNEAU_M2 = 1.95;
+// Surface unitaire panneau (m²) — module 500 Wc standard
+const SURFACE_PANNEAU_M2 = 2.0;
 
 // ============================================================
-// Recommandation puissance
+// Grille tarifaire officielle Énergies Concept
+// Kit photovoltaïque + micro-onduleurs, prix HT.
+// ============================================================
+
+interface KitEC {
+  kwc: number;
+  nb_panneaux: number;
+  ht: number;
+}
+
+export const GRILLE_PRIX_EC: ReadonlyArray<KitEC> = [
+  { kwc: 2,  nb_panneaux: 4,  ht: 7181.82 },
+  { kwc: 3,  nb_panneaux: 6,  ht: 9909.09 },
+  { kwc: 4,  nb_panneaux: 8,  ht: 11166.67 },
+  { kwc: 5,  nb_panneaux: 10, ht: 13666.67 },
+  { kwc: 6,  nb_panneaux: 12, ht: 15750.00 },
+  { kwc: 7,  nb_panneaux: 14, ht: 17416.67 },
+  { kwc: 8,  nb_panneaux: 16, ht: 19916.67 },
+  { kwc: 9,  nb_panneaux: 18, ht: 22416.67 },
+  { kwc: 10, nb_panneaux: 20, ht: 24916.67 },
+  { kwc: 11, nb_panneaux: 22, ht: 26583.33 },
+  { kwc: 12, nb_panneaux: 24, ht: 28250.00 },
+  { kwc: 13, nb_panneaux: 26, ht: 29916.67 },
+  { kwc: 14, nb_panneaux: 28, ht: 31583.33 },
+  { kwc: 15, nb_panneaux: 30, ht: 33250.00 },
+];
+
+const MIN_KWC = GRILLE_PRIX_EC[0]?.kwc ?? 2;
+const MAX_KWC = GRILLE_PRIX_EC[GRILLE_PRIX_EC.length - 1]?.kwc ?? 15;
+
+function snapToGrille(kwcWanted: number): KitEC {
+  const clamped = Math.max(MIN_KWC, Math.min(MAX_KWC, Math.round(kwcWanted)));
+  const found = GRILLE_PRIX_EC.find((g) => g.kwc === clamped);
+  return found ?? GRILLE_PRIX_EC[0]!;
+}
+
+// ============================================================
+// Recommandation puissance — snap aux puissances réellement
+// commercialisées (entier kWc, bornes [2, 15])
 // ============================================================
 
 export function recommanderPuissance(
@@ -54,13 +86,9 @@ export function recommanderPuissance(
   const panneaux_dispo = Math.min(panneauxMax, panneaux_par_surface);
   const kwc_max = (panneaux_dispo * PUISSANCE_PANNEAU_WC) / 1000;
 
-  let kwc = Math.min(kwc_cible, kwc_max);
-  // Arrondi au 0.5
-  kwc = Math.round(kwc * 2) / 2;
-  if (kwc < 1.5) kwc = 1.5;
-
-  const nb_panneaux = Math.round((kwc * 1000) / PUISSANCE_PANNEAU_WC);
-  return { kwc, nb_panneaux };
+  const kwc_brut = Math.min(kwc_cible, kwc_max);
+  const offre = snapToGrille(kwc_brut);
+  return { kwc: offre.kwc, nb_panneaux: offre.nb_panneaux };
 }
 
 // ============================================================
@@ -116,11 +144,6 @@ export function calculerScoreSolaire(
 // Analyse financière complète
 // ============================================================
 
-function coutInstallationHT(kwc: number): number {
-  const tarif = kwc <= 3 ? COUT_PAR_KWC_HT.petit : COUT_PAR_KWC_HT.grand;
-  return Math.round(kwc * tarif);
-}
-
 function tauxTVA(kwc: number): number {
   return kwc <= 3 ? TVA_PETIT : TVA_GRAND;
 }
@@ -135,11 +158,15 @@ function primeAutoconso(kwc: number): number {
 }
 
 export function calculerFinancier(
-  kwc: number,
+  kwcDemande: number,
   productionKwh: number,
 ): FinancialAnalysis {
-  // Coûts
-  const cout_installation_ht = coutInstallationHT(kwc);
+  // Snap au kit Énergies Concept le plus proche
+  const offre = snapToGrille(kwcDemande);
+  const kwc = offre.kwc;
+
+  // Coûts (issus de la grille tarifaire EC)
+  const cout_installation_ht = Math.round(offre.ht);
   const taux_tva = tauxTVA(kwc);
   const cout_installation_ttc = Math.round(
     cout_installation_ht * (1 + taux_tva),
@@ -169,7 +196,7 @@ export function calculerFinancier(
   const co2_evite_kg_an = Math.round(productionKwh * CO2_FRANCE_KG_PAR_KWH);
   const arbres_equivalent = Math.round(co2_evite_kg_an / 25);
 
-  // Projection 25 ans (avec dégradation + hausse tarifs + prime 5 ans)
+  // Projection 25 ans (dégradation + hausse tarifs + prime 5 ans)
   const projection: YearlyProjection[] = [];
   let cumul = -reste_a_charge;
   for (let i = 1; i <= 25; i++) {
@@ -196,7 +223,7 @@ export function calculerFinancier(
 
   return {
     kwc,
-    nb_panneaux: Math.round((kwc * 1000) / PUISSANCE_PANNEAU_WC),
+    nb_panneaux: offre.nb_panneaux,
     production_annuelle_kwh: Math.round(productionKwh),
     cout_installation_ht,
     cout_installation_ttc,
