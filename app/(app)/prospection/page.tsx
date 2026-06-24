@@ -21,6 +21,7 @@ import {
   formatEuros,
 } from '@/lib/financial';
 import { getStaticSatelliteUrl } from '@/lib/satellite';
+import { addLocalProspect } from '@/lib/demo-store';
 import {
   CATEGORIES,
   EFFECTIF_LABELS,
@@ -355,20 +356,27 @@ Ajoutée le ${new Date().toLocaleDateString('fr-FR')}.`
       statut: 'nouveau' as const,
       notes,
     };
-    const r = await fetch('/api/prospects', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!r.ok) return;
-    const j = (await r.json()) as { prospect: Prospect };
-    setAddresses((all) => {
-      const copy = [...all];
-      if (copy[idx]) {
-        copy[idx] = { ...copy[idx]!, prospect_id: j.prospect.id };
-      }
-      return copy;
-    });
+    try {
+      const r = await fetch('/api/prospects', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) throw new Error('post failed');
+      const j = (await r.json()) as { prospect: Prospect; demo?: boolean };
+      if (j.demo) addLocalProspect(j.prospect);
+      setAddresses((all) => {
+        const copy = [...all];
+        if (copy[idx]) {
+          copy[idx] = { ...copy[idx]!, prospect_id: j.prospect.id };
+        }
+        return copy;
+      });
+    } catch {
+      window.alert(
+        "Ajout au pipeline impossible. Vérifie ta connexion et réessaie.",
+      );
+    }
   }
 
   const sorted = [...addresses]
@@ -632,18 +640,25 @@ function ScannerParticuliers() {
       statut: 'nouveau' as const,
       notes: `Identifié via prospection de masse le ${new Date().toLocaleDateString('fr-FR')}.`,
     };
-    const r = await fetch('/api/prospects', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!r.ok) return;
-    const j = (await r.json()) as { prospect: Prospect };
-    setAddresses((all) => {
-      const copy = [...all];
-      if (copy[idx]) copy[idx] = { ...copy[idx]!, prospect_id: j.prospect.id };
-      return copy;
-    });
+    try {
+      const r = await fetch('/api/prospects', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) throw new Error('post failed');
+      const j = (await r.json()) as { prospect: Prospect; demo?: boolean };
+      if (j.demo) addLocalProspect(j.prospect);
+      setAddresses((all) => {
+        const copy = [...all];
+        if (copy[idx]) copy[idx] = { ...copy[idx]!, prospect_id: j.prospect.id };
+        return copy;
+      });
+    } catch {
+      window.alert(
+        "Ajout au pipeline impossible. Vérifie ta connexion et réessaie.",
+      );
+    }
   }
 
   const sorted = [...addresses]
@@ -850,12 +865,21 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
       statut: 'nouveau' as const,
       notes,
     };
-    const r = await fetch('/api/prospects', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (r.ok) setAdded((a) => ({ ...a, [key]: true }));
+    try {
+      const r = await fetch('/api/prospects', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) throw new Error('post failed');
+      const j = (await r.json()) as { prospect: Prospect; demo?: boolean };
+      if (j.demo) addLocalProspect(j.prospect);
+      setAdded((a) => ({ ...a, [key]: true }));
+    } catch {
+      window.alert(
+        "Ajout au pipeline impossible. Vérifie ta connexion et réessaie.",
+      );
+    }
   }
 
   return (

@@ -26,6 +26,7 @@ import { Modal } from '@/components/ui/Modal';
 import { SatellitePhoto } from '@/components/ui/SatellitePhoto';
 import { formatEuros, formatNumber } from '@/lib/financial';
 import { getStaticSatelliteUrl } from '@/lib/satellite';
+import { mergeWithLocal, updateLocalProspect } from '@/lib/demo-store';
 import type { Prospect, ProspectStatut } from '@/types';
 
 const TABS: { key: ProspectStatut | 'all'; label: string }[] = [
@@ -49,8 +50,12 @@ export default function ProspectsPage() {
     setLoading(true);
     const r = await fetch('/api/prospects');
     const json = (await r.json()) as { prospects: Prospect[]; demo: boolean };
-    setProspects(json.prospects);
     setDemo(json.demo);
+    // En mode démo, on fusionne avec les prospects ajoutés localement
+    // (localStorage) pour que le pipeline fonctionne sans base de données.
+    setProspects(
+      json.demo ? mergeWithLocal(json.prospects) : json.prospects,
+    );
     setLoading(false);
   }
 
@@ -296,15 +301,29 @@ function ProspectModal({
   async function save() {
     if (!prospect) return;
     setSaving(true);
+    // Mise à jour optimiste + persistance locale (mode démo)
+    const optimistic: Prospect = {
+      ...prospect,
+      notes,
+      statut,
+      updated_at: new Date().toISOString(),
+    };
+    updateLocalProspect(prospect.id, { notes, statut });
     try {
       const r = await fetch(`/api/prospects/${prospect.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ notes, statut }),
       });
-      if (!r.ok) throw new Error('save error');
-      const json = (await r.json()) as { prospect: Prospect };
-      onUpdated(json.prospect);
+      if (r.ok) {
+        const json = (await r.json()) as { prospect: Prospect };
+        onUpdated(json.prospect);
+      } else {
+        // mode démo (prospect non persisté côté serveur) → on garde l'optimiste
+        onUpdated(optimistic);
+      }
+    } catch {
+      onUpdated(optimistic);
     } finally {
       setSaving(false);
     }

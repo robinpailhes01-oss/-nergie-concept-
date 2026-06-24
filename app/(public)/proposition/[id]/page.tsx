@@ -1,12 +1,10 @@
-import { notFound } from 'next/navigation';
 import { getSupabase, supabaseEnabled } from '@/lib/supabase';
 import { demoProspects } from '@/lib/demo-data';
-import { calculerFinancier } from '@/lib/financial';
-import { genererPropositionHTML } from '@/lib/proposition';
-import { getProxiedSatelliteUrl } from '@/lib/satellite';
+import { buildPropositionHTML } from '@/lib/proposition-build';
 import { isUuid } from '@/lib/uuid';
 import { PropositionViewer } from './PropositionViewer';
-import type { Prospect, PropositionData } from '@/types';
+import { PropositionFallback } from './PropositionFallback';
+import type { Prospect } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,52 +28,22 @@ async function loadProspect(id: string): Promise<Prospect | null> {
   return (data as Prospect | null) ?? null;
 }
 
-function buildHTML(prospect: Prospect): string {
-  if (prospect.proposition_html) return prospect.proposition_html;
-
-  // Pas d'HTML stocké → on régénère à la volée
-  const kwc = prospect.puissance_kwc ?? 4.5;
-  const prod = prospect.production_annuelle_kwh ?? 4500;
-  const fin = calculerFinancier(kwc, prod);
-  const data: PropositionData = {
-    prospect,
-    numero: prospect.proposition_id ?? 'EC-DEMO',
-    date: new Date(prospect.created_at).toLocaleDateString('fr-FR', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    }),
-    toiture: {
-      surface_m2: prospect.surface_toit_m2 ?? 70,
-      nb_panneaux: prospect.nb_panneaux_recommande ?? fin.nb_panneaux,
-      orientation: prospect.orientation_principale ?? 'Sud',
-      heures_ensoleillement: prospect.heures_ensoleillement ?? 2500,
-      score_solaire: prospect.score_solaire ?? 80,
-      qualite_imagerie: prospect.qualite_imagerie ?? 'HIGH',
-    },
-    financier: fin,
-    photo_satellite_url: getProxiedSatelliteUrl(
-      prospect.latitude,
-      prospect.longitude,
-      { width: 800, height: 420, zoom: 20 },
-    ),
-  };
-  return genererPropositionHTML(data);
-}
-
 export default async function PropositionPage({
   params,
 }: {
   params: { id: string };
 }) {
   const prospect = await loadProspect(params.id);
-  if (!prospect) notFound();
 
-  const html = buildHTML(prospect);
+  // Prospect non trouvé côté serveur : en démo, il a pu être créé
+  // dans le navigateur (localStorage) → fallback client.
+  if (!prospect) {
+    return <PropositionFallback id={params.id} />;
+  }
 
   return (
     <PropositionViewer
-      html={html}
+      html={buildPropositionHTML(prospect)}
       prospectId={prospect.id}
       prenom={prospect.prenom}
       nom={prospect.nom}

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { addLocalProspect, updateLocalProspect } from '@/lib/demo-store';
 import { SatellitePhoto } from '@/components/ui/SatellitePhoto';
 import {
   calculerFinancier,
@@ -142,7 +143,8 @@ function AnalyseInner() {
         body: JSON.stringify(payload),
       });
       if (!r.ok) throw new Error('Erreur sauvegarde');
-      const json = (await r.json()) as { prospect: Prospect };
+      const json = (await r.json()) as { prospect: Prospect; demo?: boolean };
+      if (json.demo) addLocalProspect(json.prospect);
       setSavedProspect(json.prospect);
       setSaveOpen(false);
     } finally {
@@ -171,9 +173,37 @@ function AnalyseInner() {
           },
         }),
       });
-      if (!r.ok) throw new Error('Erreur génération');
-      const json = (await r.json()) as { proposition_id: string };
-      router.push(`/proposition/${json.proposition_id}`);
+      if (r.ok) {
+        const json = (await r.json()) as { proposition_id: string };
+        router.push(`/proposition/${json.proposition_id}`);
+        return;
+      }
+      // Mode démo : prospect en localStorage, non visible côté serveur.
+      // On génère la proposition localement.
+      const fin = calculerFinancier(
+        currentScenario.kwc,
+        currentScenario.production_annuelle_kwh,
+      );
+      const propId = `prop_${Math.random().toString(36).slice(2, 10)}`;
+      updateLocalProspect(savedProspect.id, {
+        puissance_kwc: currentScenario.kwc,
+        nb_panneaux_recommande: currentScenario.nb_panneaux,
+        production_annuelle_kwh: currentScenario.production_annuelle_kwh,
+        surface_toit_m2: data.toiture.surface_m2,
+        heures_ensoleillement: data.toiture.heures_ensoleillement,
+        orientation_principale: data.toiture.orientation_principale,
+        score_solaire: data.score_solaire,
+        qualite_imagerie: data.qualite,
+        cout_installation_ttc: fin.cout_installation_ttc,
+        aides_totales: fin.aides_totales,
+        reste_a_charge: fin.reste_a_charge,
+        economie_annuelle: fin.economie_annuelle,
+        temps_retour_ans: fin.temps_retour_ans,
+        co2_evite_kg_an: fin.co2_evite_kg_an,
+        statut: 'proposition_envoyee',
+        proposition_id: propId,
+      });
+      router.push(`/proposition/${propId}`);
     } finally {
       setGeneratingProp(false);
     }

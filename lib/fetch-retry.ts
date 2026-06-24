@@ -3,7 +3,7 @@
 // ont des micro-pannes fréquentes (503 passagers).
 // ============================================================
 
-const RETRY_DELAYS_MS = [600, 1500];
+const RETRY_DELAYS_MS = [500, 1200, 2500];
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

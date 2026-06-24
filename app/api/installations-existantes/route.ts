@@ -42,7 +42,7 @@ interface OdreResponse {
   results: OdreRecord[];
 }
 
-interface SireneSiege {
+interface SireneEtablissement {
   adresse?: string;
   code_postal?: string;
   libelle_commune?: string;
@@ -50,13 +50,15 @@ interface SireneSiege {
   latitude?: string | number | null;
   longitude?: string | number | null;
   activite_principale?: string;
+  etat_administratif?: string;
 }
 
 interface SireneResult {
   siren: string;
   nom_complet?: string;
   nom_raison_sociale?: string;
-  siege?: SireneSiege;
+  siege?: SireneEtablissement;
+  matching_etablissements?: SireneEtablissement[];
 }
 
 export interface InstallationExistante {
@@ -107,13 +109,15 @@ async function enrichSirene(
   rec: OdreRecord,
 ): Promise<InstallationExistante['entreprise']> {
   const q = nettoyerNomInstallation(rec.nominstallation);
-  if (!q) return null;
+  if (!q || !rec.codeinseecommune) return null;
 
+  // Requête ciblée sur la COMMUNE de l'installation : on veut l'adresse
+  // du bâtiment équipé, pas le siège social national de l'enseigne.
   const url = new URL('https://recherche-entreprises.api.gouv.fr/search');
   url.searchParams.set('q', q);
-  url.searchParams.set('departement', rec.codedepartement);
+  url.searchParams.set('code_commune', rec.codeinseecommune);
   url.searchParams.set('etat_administratif', 'A');
-  url.searchParams.set('per_page', '3');
+  url.searchParams.set('per_page', '5');
 
   try {
     const r = await fetchRetry(url.toString(), {
@@ -124,25 +128,31 @@ async function enrichSirene(
     const data = (await r.json()) as { results: SireneResult[] };
     if (!data.results?.length) return null;
 
-    // Privilégie le résultat dont le siège est dans la même commune INSEE
-    const communeMatch = data.results.find(
-      (e) => e.siege?.commune && e.siege.commune === rec.codeinseecommune,
-    );
-    const top = communeMatch ?? data.results[0];
-    if (!top?.siege?.adresse) return null;
+    // On cherche un établissement RÉELLEMENT situé dans la commune
+    // de l'installation (matching_etablissements), pas le siège.
+    for (const result of data.results) {
+      const local = (result.matching_etablissements ?? []).find(
+        (e) =>
+          e.commune === rec.codeinseecommune &&
+          e.adresse &&
+          (e.etat_administratif ?? 'A') === 'A',
+      );
+      if (!local) continue;
 
-    const s = top.siege;
-    return {
-      nom: top.nom_raison_sociale ?? top.nom_complet ?? q,
-      siren: top.siren,
-      adresse: (s.adresse ?? '').trim(),
-      code_postal: s.code_postal ?? '',
-      ville: s.libelle_commune ?? '',
-      lat: toNum(s.latitude),
-      lng: toNum(s.longitude),
-      naf: s.activite_principale ?? '',
-      confiance: communeMatch ? 'haute' : 'moyenne',
-    };
+      return {
+        nom: result.nom_raison_sociale ?? result.nom_complet ?? q,
+        siren: result.siren,
+        adresse: (local.adresse ?? '').trim(),
+        code_postal: local.code_postal ?? '',
+        ville: local.libelle_commune ?? rec.commune,
+        lat: toNum(local.latitude),
+        lng: toNum(local.longitude),
+        naf: local.activite_principale ?? '',
+        confiance: 'haute',
+      };
+    }
+
+    return null;
   } catch {
     return null;
   }
