@@ -373,7 +373,7 @@ export function genererPropositionHTML(data: PropositionData): string {
     ${
       photo_satellite_url
         ? `<div class="hero-sat">
-        <img src="${photo_satellite_url}" alt="Vue satellite de votre bâtiment" crossorigin="anonymous" />
+        <img src="${photo_satellite_url}" alt="Vue satellite de votre bâtiment" />
         <div class="hero-sat-caption">
           <span class="dot"></span>
           Vue satellite de votre bâtiment · analyse Google Solar API

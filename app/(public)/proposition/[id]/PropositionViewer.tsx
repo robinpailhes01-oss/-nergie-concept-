@@ -60,10 +60,13 @@ export function PropositionViewer({
         const page = pages[i];
         if (!page) continue;
 
+        // useCORS sans allowTaint : si l'image satellite Google n'est pas
+        // servie en CORS, elle est simplement omise du PDF — mais le canvas
+        // reste propre et le PDF se génère quand même (jamais de blocage).
         const canvas = await html2canvas(page, {
           scale: 2,
           useCORS: true,
-          allowTaint: true,
+          allowTaint: false,
           backgroundColor: '#ffffff',
           logging: false,
         });

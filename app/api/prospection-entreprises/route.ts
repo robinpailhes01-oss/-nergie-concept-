@@ -16,6 +16,16 @@ export const maxDuration = 20;
 const ALLOWED_DEPTS = ['30', '34'] as const;
 const MAX_LIMIT = 25;
 
+interface SireneEtab {
+  siret?: string;
+  adresse?: string;
+  code_postal?: string;
+  libelle_commune?: string;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+  etat_administratif?: string;
+}
+
 interface SearchResult {
   siren: string;
   nom_complet?: string;
@@ -24,14 +34,8 @@ interface SearchResult {
   section_activite_principale?: string;
   tranche_effectif_salarie?: string;
   categorie_entreprise?: string;
-  siege?: {
-    siret?: string;
-    adresse?: string;
-    code_postal?: string;
-    libelle_commune?: string;
-    latitude?: string | number | null;
-    longitude?: string | number | null;
-  };
+  siege?: SireneEtab;
+  matching_etablissements?: SireneEtab[];
 }
 
 interface ApiResponse {
@@ -103,10 +107,13 @@ export async function GET(req: Request) {
   if (taille) url.searchParams.set('categorie_entreprise', taille);
   if (secteur) url.searchParams.set('section_activite_principale', secteur);
   url.searchParams.set('etat_administratif', 'A');
-  url.searchParams.set('est_siege', 'true');
-  // Toujours demander le max : les sièges hors 30/34 (chaînes nationales
-  // avec un établissement local) sont filtrés après coup
   url.searchParams.set('per_page', '25');
+
+  function etabEnZone(e: SireneEtab | undefined): boolean {
+    if (!e?.adresse) return false;
+    const dept = (e.code_postal ?? '').substring(0, 2);
+    return ALLOWED_DEPTS.includes(dept as (typeof ALLOWED_DEPTS)[number]);
+  }
 
   try {
     const r = await fetchRetry(url.toString(), {
@@ -123,29 +130,29 @@ export async function GET(req: Request) {
 
     const entreprises: EntrepriseAddress[] = data.results
       .map((e) => {
-        const s = e.siege;
-        if (!s) return null;
-        const lat = toNumber(s.latitude);
-        const lng = toNumber(s.longitude);
+        // On veut l'ADRESSE LOCALE du bâtiment (pas le siège national).
+        // matching_etablissements = établissements qui matchent la zone
+        // recherchée ; on retombe sur le siège seulement s'il est en zone.
+        const local =
+          (e.matching_etablissements ?? []).find(
+            (et) =>
+              etabEnZone(et) && (et.etat_administratif ?? 'A') === 'A',
+          ) ?? (etabEnZone(e.siege) ? e.siege : undefined);
+        if (!local) return null;
+
+        const lat = toNumber(local.latitude);
+        const lng = toNumber(local.longitude);
         if (lat === null || lng === null) return null;
 
-        const postcode = s.code_postal ?? '';
-        const dept = postcode.substring(0, 2);
-        if (!ALLOWED_DEPTS.includes(dept as (typeof ALLOWED_DEPTS)[number])) {
-          return null;
-        }
-
+        const postcode = local.code_postal ?? '';
         const nom = e.nom_raison_sociale ?? e.nom_complet ?? 'Entreprise';
-        const adresse = (s.adresse ?? '').trim();
-        const commune = s.libelle_commune ?? '';
+        const adresse = (local.adresse ?? '').trim();
+        const commune = local.libelle_commune ?? '';
         const section = e.section_activite_principale ?? '';
         const effectif = e.tranche_effectif_salarie ?? '';
 
-        // s.adresse contient déjà code postal + commune → pas de re-concaténation
-        const label = adresse || `${commune} ${postcode}`.trim();
-
         return {
-          label,
+          label: adresse || `${commune} ${postcode}`.trim(),
           city: commune,
           postcode,
           lat,

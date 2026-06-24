@@ -6,7 +6,7 @@
 
 import { calculerFinancier } from './financial';
 import { genererPropositionHTML } from './proposition';
-import { getProxiedSatelliteUrl } from './satellite';
+import { getStaticSatelliteUrl } from './satellite';
 import type { Prospect, PropositionData } from '@/types';
 
 export function buildPropositionHTML(prospect: Prospect): string {
@@ -32,10 +32,10 @@ export function buildPropositionHTML(prospect: Prospect): string {
       qualite_imagerie: prospect.qualite_imagerie ?? 'HIGH',
     },
     financier: fin,
-    photo_satellite_url: getProxiedSatelliteUrl(
+    photo_satellite_url: getStaticSatelliteUrl(
       prospect.latitude,
       prospect.longitude,
-      { width: 800, height: 420, zoom: 20 },
+      { width: 640, height: 360, zoom: 20 },
     ),
   };
   return genererPropositionHTML(data);

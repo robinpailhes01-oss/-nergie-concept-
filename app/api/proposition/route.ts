@@ -11,7 +11,7 @@ import { getSupabase, supabaseEnabled } from '@/lib/supabase';
 import { demoProspects } from '@/lib/demo-data';
 import { calculerFinancier } from '@/lib/financial';
 import { genererPropositionHTML } from '@/lib/proposition';
-import { getProxiedSatelliteUrl } from '@/lib/satellite';
+import { getStaticSatelliteUrl } from '@/lib/satellite';
 import type { Prospect, PropositionData } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -89,10 +89,10 @@ export async function POST(req: Request) {
     date,
     toiture,
     financier,
-    photo_satellite_url: getProxiedSatelliteUrl(
+    photo_satellite_url: getStaticSatelliteUrl(
       prospect.latitude,
       prospect.longitude,
-      { width: 800, height: 420, zoom: 20 },
+      { width: 640, height: 360, zoom: 20 },
     ),
   };
   const html = genererPropositionHTML(data);
