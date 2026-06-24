@@ -491,8 +491,8 @@ function ScenariosBlock({
                   Recommandé
                 </div>
               )}
-              <div className="font-display text-3xl font-bold">{s.kwc} kWc</div>
-              <div className="text-sm text-text-muted">{s.nb_panneaux} panneaux</div>
+              <div className="font-display text-3xl font-bold">{fin.kwc} kWc</div>
+              <div className="text-sm text-text-muted">{fin.nb_panneaux} panneaux</div>
               <div className="mt-4 space-y-1.5 text-sm">
                 <Row k="Production" v={`${formatNumber(s.production_annuelle_kwh)} kWh/an`} />
                 <Row k="Coût TTC" v={formatEuros(fin.cout_installation_ttc)} />
