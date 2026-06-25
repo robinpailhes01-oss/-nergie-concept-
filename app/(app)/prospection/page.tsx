@@ -993,7 +993,7 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
                         <td className="py-3 pr-4 max-w-xs">
                           <div className="flex items-center gap-3">
                             {ent?.lat && ent?.lng ? (
-                              <Thumbnail lat={ent.lat} lng={ent.lng} />
+                              <Thumbnail lat={ent.lat} lng={ent.lng} href={`https://www.google.com/maps/@${ent.lat},${ent.lng},19z/data=!3m1!1e3`} />
                             ) : (
                               <div
                                 className="w-12 h-12 rounded-lg shrink-0 flex items-center justify-center"
@@ -1024,7 +1024,7 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
                                   </span>
                                 </div>
                               )}
-                              {ent && ent.nom !== item.nom_installation && (
+                              {ent && !nomsCorrespondent(ent.nom, item.nom_installation) && (
                                 <div className="text-[10px] text-text-muted truncate">
                                   Installation : {item.nom_installation}
                                 </div>
@@ -1032,42 +1032,51 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 pr-4 text-xs">
+                        <td className="py-3 pr-4 text-xs max-w-[260px]">
                           {ent?.adresse ? (
                             <div>
                               <a
-                                href={`https://www.google.com/maps/place/${encodeURIComponent(`${ent.adresse} ${ent.code_postal} ${ent.ville}`)}/@${ent.lat ?? 0},${ent.lng ?? 0},80m/data=!3m1!1e3`}
+                                href={`https://www.google.com/maps/@${ent.lat ?? 0},${ent.lng ?? 0},19z/data=!3m1!1e3`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="font-medium hover:text-orange inline-flex items-center gap-1 group"
-                                title="Ouvrir en vue satellite pour vérifier les panneaux"
+                                className="font-medium hover:underline inline-flex items-start gap-1 group"
+                                style={{ color: '#1F2937' }}
+                                title="Cliquer pour vérifier les panneaux en vue satellite"
                               >
                                 {ent.adresse}
-                                <ExternalLink className="w-3 h-3 opacity-50 group-hover:opacity-100" />
+                                <ExternalLink className="w-3 h-3 mt-0.5 shrink-0 opacity-40 group-hover:opacity-100" style={{ color: '#F5821F' }} />
                               </a>
-                              {ent.nom !== item.nom_installation && (
+                              {!nomsCorrespondent(ent.nom, item.nom_installation) ? (
                                 <div
-                                  className="mt-1 text-[10px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded"
-                                  style={{ background: '#FEF3C7', color: '#92400E' }}
-                                  title="Le nom de l'installation diffère du nom d'entreprise : les panneaux peuvent être sur un autre bâtiment de la société (vérifier sur Maps)."
+                                  className="mt-1.5 text-[11px] font-semibold inline-flex items-center gap-1 px-2 py-1 rounded"
+                                  style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}
                                 >
-                                  ⚠ Vérifier emplacement panneaux
+                                  ⚠️ Vérifier emplacement
+                                </div>
+                              ) : (
+                                <div
+                                  className="mt-1.5 text-[11px] font-semibold inline-flex items-center gap-1 px-2 py-1 rounded"
+                                  style={{ background: '#ECFDF5', color: '#065F46', border: '1px solid #6EE7B7' }}
+                                >
+                                  ✓ Adresse fiable
                                 </div>
                               )}
                             </div>
                           ) : (
-                            <span className="text-text-muted">
-                              {item.commune} (commune seule —{' '}
-                              <a
-                                href={`https://www.google.com/maps/search/${encodeURIComponent(`${item.nom_installation} ${item.commune}`)}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="underline"
-                              >
-                                chercher sur Maps
-                              </a>
-                              )
-                            </span>
+                            <div>
+                              <span className="text-text-muted">{item.commune}</span>
+                              <div className="mt-1.5">
+                                <a
+                                  href={`https://www.google.com/maps/search/${encodeURIComponent(`${item.nom_installation} ${item.commune}`)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[11px] font-semibold inline-flex items-center gap-1 px-2 py-1 rounded"
+                                  style={{ background: '#F3F4F6', color: '#374151', border: '1px solid #D1D5DB' }}
+                                >
+                                  <Search className="w-3 h-3" /> Chercher sur Maps
+                                </a>
+                              </div>
+                            </div>
                           )}
                         </td>
                         <td className="py-3 pr-4">
@@ -1196,9 +1205,11 @@ function ScanBanner({
 function Thumbnail({
   lat,
   lng,
+  href,
 }: {
   lat: number;
   lng: number;
+  href?: string;
 }) {
   const url = getStaticSatelliteUrl(lat, lng, {
     width: 96,
@@ -1206,17 +1217,7 @@ function Thumbnail({
     zoom: 19,
     marker: false,
   });
-  if (!url) {
-    return (
-      <div
-        className="w-12 h-12 rounded-lg shrink-0"
-        style={{
-          background: 'linear-gradient(135deg, #FEF0E6 0%, #FCD7B4 100%)',
-        }}
-      />
-    );
-  }
-  return (
+  const img = url ? (
     /* eslint-disable-next-line @next/next/no-img-element */
     <img
       src={url}
@@ -1224,7 +1225,26 @@ function Thumbnail({
       className="w-12 h-12 rounded-lg object-cover shrink-0"
       loading="lazy"
     />
+  ) : (
+    <div
+      className="w-12 h-12 rounded-lg shrink-0"
+      style={{ background: 'linear-gradient(135deg, #FEF0E6 0%, #FCD7B4 100%)' }}
+    />
   );
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="shrink-0 block rounded-lg ring-2 ring-transparent hover:ring-orange transition-all"
+        title="Voir en vue satellite"
+      >
+        {img}
+      </a>
+    );
+  }
+  return img;
 }
 
 function ScoreCell({ status, score }: { status: ScannedAddress['status']; score: number | null }) {
