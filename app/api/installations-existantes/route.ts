@@ -190,7 +190,7 @@ export async function GET(req: Request) {
   const dept = searchParams.get('dept') ?? '34';
   const commune = searchParams.get('commune')?.trim() ?? '';
   const tri = searchParams.get('tri') ?? 'anciennes';
-  const pmin = Math.max(Number(searchParams.get('pmin') ?? 36), 1);
+  const pmin = Math.max(Number(searchParams.get('pmin') ?? 9), 1);
   const pmax = Math.min(Number(searchParams.get('pmax') ?? 2000), 100000);
   const limit = Math.min(
     Math.max(Number(searchParams.get('limit') ?? 15), 1),

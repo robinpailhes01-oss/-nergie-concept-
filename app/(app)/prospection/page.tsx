@@ -944,8 +944,8 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
           </Button>
         </div>
         <p className="text-xs text-text-muted mt-3">
-          ☀️ Plage 36 kW – 2 MW : toitures professionnelles (les fermes au sol
-          géantes et les installations résidentielles anonymisées sont exclues).
+          ☀️ Plage 9 kW – 2 MW : artisans, commerces, PME et grandes surfaces
+          (les fermes au sol géantes et résidentiels anonymisés sont exclus).
         </p>
       </div>
 

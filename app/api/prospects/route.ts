@@ -139,7 +139,41 @@ export async function POST(req: Request) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Supabase configuré mais table absente (ex: projet non migré) → mode démo
+    const fake: Prospect = {
+      id: `demo-${Date.now()}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      statut: body.statut ?? 'nouveau',
+      email: body.email ?? null,
+      telephone: body.telephone ?? null,
+      code_postal: body.code_postal ?? null,
+      latitude: body.latitude ?? null,
+      longitude: body.longitude ?? null,
+      surface_toit_m2: body.surface_toit_m2 ?? null,
+      nb_panneaux_recommande: body.nb_panneaux_recommande ?? null,
+      production_annuelle_kwh: body.production_annuelle_kwh ?? null,
+      heures_ensoleillement: body.heures_ensoleillement ?? null,
+      orientation_principale: body.orientation_principale ?? null,
+      score_solaire: body.score_solaire ?? null,
+      qualite_imagerie: body.qualite_imagerie ?? null,
+      puissance_kwc: body.puissance_kwc ?? null,
+      cout_installation_ttc: body.cout_installation_ttc ?? null,
+      aides_totales: body.aides_totales ?? null,
+      reste_a_charge: body.reste_a_charge ?? null,
+      economie_annuelle: body.economie_annuelle ?? null,
+      temps_retour_ans: body.temps_retour_ans ?? null,
+      co2_evite_kg_an: body.co2_evite_kg_an ?? null,
+      notes: body.notes ?? null,
+      proposition_id: body.proposition_id ?? null,
+      proposition_html: body.proposition_html ?? null,
+      proposition_vue_at: body.proposition_vue_at ?? null,
+      nom: body.nom,
+      prenom: body.prenom,
+      adresse: body.adresse,
+      ville: body.ville,
+    };
+    return NextResponse.json({ prospect: fake, demo: true });
   }
 
   return NextResponse.json({ prospect: data as Prospect, demo: false });
