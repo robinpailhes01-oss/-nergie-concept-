@@ -15,7 +15,12 @@
 // ============================================================
 
 import { NextResponse } from 'next/server';
-import { nettoyerNomInstallation } from '@/lib/entreprises';
+import {
+  nafEstFiable,
+  nettoyerNomInstallation,
+  nomEstProjet,
+  nomsCorrespondent,
+} from '@/lib/entreprises';
 import { fetchRetry } from '@/lib/fetch-retry';
 
 export const dynamic = 'force-dynamic';
@@ -196,6 +201,7 @@ export async function GET(req: Request) {
     Math.max(Number(searchParams.get('limit') ?? 15), 1),
     MAX_LIMIT,
   );
+  const strict = searchParams.get('strict') !== '0'; // défaut : strict ON
 
   const deptFilter =
     dept === '30' || dept === '34'
@@ -222,9 +228,14 @@ export async function GET(req: Request) {
         ? 'datemiseenservice_date desc'
         : 'datemiseenservice_date asc';
 
+  // En mode strict, on tire 4× plus de candidats puis on filtre :
+  // beaucoup d'installations seront rejetées (nom de projet, NAF non
+  // fiable, pas de match SIRENE local).
+  const fetchLimit = strict ? Math.min(limit * 4, 80) : limit;
+
   let data: OdreResponse;
   try {
-    data = await odreQuery(clauses.join(' and '), orderBy, limit);
+    data = await odreQuery(clauses.join(' and '), orderBy, fetchLimit);
   } catch {
     return NextResponse.json(
       { error: 'Registre ODRÉ indisponible, réessayer dans un instant.' },
@@ -232,15 +243,21 @@ export async function GET(req: Request) {
     );
   }
 
+  // En mode strict, on écarte d'emblée les noms d'installation qui
+  // sont clairement des noms de projet (PARC, CENTRALE, SPV, AFRD…) :
+  // pas la peine de gaspiller des requêtes SIRENE.
+  const candidates = strict
+    ? data.results.filter((r) => !nomEstProjet(r.nominstallation))
+    : data.results;
+
   // Enrichissement SIRENE en parallèle limité
-  const records = data.results;
-  const enriched: InstallationExistante[] = new Array(records.length);
+  const enriched: InstallationExistante[] = new Array(candidates.length);
   let cursor = 0;
 
   async function worker(): Promise<void> {
-    while (cursor < records.length) {
+    while (cursor < candidates.length) {
       const i = cursor++;
-      const rec = records[i];
+      const rec = candidates[i];
       if (!rec) continue;
       const entreprise = await enrichSirene(rec);
       enriched[i] = {
@@ -262,9 +279,26 @@ export async function GET(req: Request) {
     Array.from({ length: ENRICH_WORKERS }, () => worker()),
   );
 
+  let result = enriched.filter(Boolean);
+
+  // En mode strict, on ne garde que les leads ULTRA fiables :
+  //   - une entreprise SIRENE locale trouvée
+  //   - son NAF est "propriétaire-occupant" (industrie, commerce…)
+  //   - le nom d'entreprise et le nom d'installation se correspondent
+  if (strict) {
+    result = result.filter(
+      (r) =>
+        r.entreprise &&
+        nafEstFiable(r.entreprise.naf) &&
+        nomsCorrespondent(r.entreprise.nom, r.nom_installation),
+    );
+  }
+
   return NextResponse.json({
-    installations: enriched.filter(Boolean),
-    count: enriched.length,
+    installations: result.slice(0, limit),
+    count: result.length,
     total: data.total_count,
+    strict,
+    rejected: candidates.length - result.length,
   });
 }

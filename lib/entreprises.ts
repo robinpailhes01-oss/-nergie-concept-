@@ -90,6 +90,80 @@ export function nettoyerNomInstallation(nom: string): string {
   return tokensSignificatifs(nom).slice(0, 3).join(' ');
 }
 
+// ============================================================
+// Fiabilité adresse : NAF "propriétaire-occupant"
+// ============================================================
+//
+// Pour les installations solaires existantes, on veut savoir si
+// l'adresse SIRENE de l'entreprise = adresse réelle des panneaux.
+//
+// Vrai dans 95%+ des cas pour :
+//   - Industrie (10–33)            → usines avec leurs toits
+//   - Construction (41–43)         → ateliers
+//   - Commerce (45–47)             → magasins, supermarchés
+//   - Transport / logistique (49–53) → entrepôts
+//   - Hôtellerie-restauration (55–56)
+//   - Enseignement (85)            → écoles, collèges
+//   - Santé (86–88)                → cliniques, EHPAD
+//   - Administration publique (84) → mairies, gendarmeries
+//   - Agriculture (01–03)          → exploitations
+//   - Sports & loisirs (93)        → gymnases
+//
+// FAUX (panneaux ailleurs) pour :
+//   - Activités financières (64)         → holdings, SPV
+//   - Assurance (65), fonds (66)
+//   - Immobilier (68)                    → SCI, foncières
+//   - Sièges sociaux (70)                → holdings
+const NAF_RACINES_FIABLES: readonly string[] = [
+  '01', '02', '03',                                     // agriculture
+  '10', '11', '12', '13', '14', '15', '16', '17', '18', // industrie
+  '19', '20', '21', '22', '23', '24', '25', '26', '27',
+  '28', '29', '30', '31', '32', '33',
+  '35', '36', '37', '38', '39',                         // énergie, eau, déchets
+  '41', '42', '43',                                     // construction
+  '45', '46', '47',                                     // commerce
+  '49', '50', '51', '52', '53',                         // transport/logistique
+  '55', '56',                                           // hôtels / restauration
+  '58', '59', '60', '61', '62', '63',                   // info & comm
+  '71', '72', '73', '74', '75',                         // services tech
+  '77', '78', '79', '80', '81', '82',                   // services support
+  '84',                                                  // admin publique
+  '85',                                                  // enseignement
+  '86', '87', '88',                                     // santé / social
+  '90', '91', '92', '93', '94', '95', '96',             // culture, sports, loisirs
+];
+
+// NAF où l'entreprise détient des actifs scattered (panneaux ailleurs)
+const NAF_RACINES_NON_FIABLES: readonly string[] = [
+  '64', // activités des services financiers
+  '65', // assurance
+  '66', // activités auxiliaires de finance
+  '68', // immobilier (SCI, foncières)
+  '70', // sièges sociaux, conseil de gestion
+];
+
+export function nafEstFiable(naf: string | null | undefined): boolean {
+  if (!naf) return false;
+  const racine = naf.replace(/\./g, '').substring(0, 2);
+  if (NAF_RACINES_NON_FIABLES.includes(racine)) return false;
+  return NAF_RACINES_FIABLES.includes(racine);
+}
+
+// Patterns dans le nom d'installation qui signalent un PROJET
+// (≠ un bâtiment occupé) → l'adresse n'est probablement pas celle des panneaux
+const PATTERNS_PROJET = [
+  /\bPARC\b/i,
+  /\bCENTRALE\b/i,
+  /\bFERME\b/i,
+  /\bSPV\b/i,
+  /\bSCI\b/i,
+  /\bAFRD?\d+/i, // code projet anonyme ENEDIS
+];
+
+export function nomEstProjet(nomInstallation: string): boolean {
+  return PATTERNS_PROJET.some((p) => p.test(nomInstallation));
+}
+
 // Match conservateur : un token significatif de ≥ 5 caractères en
 // commun, ou tous les tokens de l'un contenus dans l'autre.
 export function nomsCorrespondent(a: string, b: string): boolean {

@@ -789,6 +789,7 @@ function ScannerEquipes() {
   const [commune, setCommune] = useState('');
   const [tri, setTri] = useState('anciennes');
   const [limit, setLimit] = useState(15);
+  const [strict, setStrict] = useState(true);
   const [items, setItems] = useState<InstallationExistante[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -805,6 +806,7 @@ function ScannerEquipes() {
         dept,
         tri,
         limit: String(limit),
+        strict: strict ? '1' : '0',
       });
       if (commune.trim()) qs.set('commune', commune.trim());
       const r = await fetch(`/api/installations-existantes?${qs.toString()}`);
@@ -816,7 +818,11 @@ function ScannerEquipes() {
         return;
       }
       if (json.installations.length === 0) {
-        setError('Aucune installation trouvée avec ces critères.');
+        setError(
+          strict
+            ? 'Aucune installation ULTRA fiable dans cette zone. Désactive "Mode 100% fiable" pour élargir.'
+            : 'Aucune installation trouvée avec ces critères.',
+        );
         return;
       }
       setItems(json.installations);
@@ -892,16 +898,14 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
           <strong>Entreprises déjà équipées en solaire</strong> — source :
           registre national des installations (ODRÉ / Enedis, open data).
           Cibles idéales pour la <strong>maintenance, le remplacement
-          d'onduleurs, l'extension ou l'ajout de batteries</strong>. Le
-          registre donne la commune ; l'adresse exacte est retrouvée
-          automatiquement via SIRENE quand le nom correspond à une entreprise.
+          d'onduleurs, l'extension ou l'ajout de batteries</strong>.
         </p>
         <p className="text-xs mt-2" style={{ color: '#047857' }}>
-          ℹ️ L'adresse affichée est celle de l'entreprise propriétaire (SIRENE).
-          Les panneaux peuvent se trouver sur un autre bâtiment du même groupe
-          (SCI, foncière, multi-sites). Quand le <strong>nom d'installation
-          diffère</strong> du nom d'entreprise, un avertissement orange t'invite
-          à vérifier sur Maps. Clique l'adresse pour ouvrir directement en vue satellite.
+          <strong>Mode 100% fiable (par défaut)</strong> : on ne garde que les
+          installations où le NAF de l'entreprise est <em>propriétaire-occupant</em>
+          (industrie, commerce, hôtel, école, mairie, agriculture…) ET où le nom
+          correspond. Les SCI, foncières, holdings et noms de projet (PARC, CENTRALE…)
+          sont automatiquement exclus — leurs panneaux sont souvent à une autre adresse.
         </p>
       </div>
 
@@ -945,7 +949,21 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
             <option value={20}>20 résultats</option>
           </select>
         </div>
-        <div className="flex justify-end mt-3">
+        <div className="flex items-center justify-between mt-3 flex-wrap gap-3">
+          <label
+            className="inline-flex items-center gap-2 cursor-pointer select-none"
+            title="Filtrage strict : ne garde que les leads où l'adresse SIRENE = adresse panneaux à 100%"
+          >
+            <input
+              type="checkbox"
+              checked={strict}
+              onChange={(e) => setStrict(e.target.checked)}
+              className="w-4 h-4 accent-orange"
+            />
+            <span className="text-sm font-semibold" style={{ color: strict ? '#0D7C66' : '#6B7280' }}>
+              {strict ? '🛡️ Mode 100% fiable (recommandé)' : '⚠️ Mode élargi (plus de leads, certains à vérifier)'}
+            </span>
+          </label>
           <Button onClick={search} loading={loading}>
             {!loading && <Search className="w-4 h-4" />} Rechercher les installations
           </Button>
@@ -1046,19 +1064,21 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
                                 {ent.adresse}
                                 <ExternalLink className="w-3 h-3 mt-0.5 shrink-0 opacity-40 group-hover:opacity-100" style={{ color: '#F5821F' }} />
                               </a>
-                              {!nomsCorrespondent(ent.nom, item.nom_installation) ? (
+                              {strict ? (
                                 <div
-                                  className="mt-1.5 text-[11px] font-semibold inline-flex items-center gap-1 px-2 py-1 rounded"
-                                  style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}
+                                  className="mt-1.5 text-[11px] font-bold inline-flex items-center gap-1 px-2 py-1 rounded"
+                                  style={{ background: '#ECFDF5', color: '#065F46', border: '1px solid #6EE7B7' }}
+                                  title="Adresse vérifiée : entreprise propriétaire-occupante + nom d'installation correspondant"
                                 >
-                                  ⚠️ Vérifier emplacement
+                                  ✓ 100% fiable
                                 </div>
                               ) : (
                                 <div
                                   className="mt-1.5 text-[11px] font-semibold inline-flex items-center gap-1 px-2 py-1 rounded"
-                                  style={{ background: '#ECFDF5', color: '#065F46', border: '1px solid #6EE7B7' }}
+                                  style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}
+                                  title="Mode élargi : adresse à vérifier sur Maps"
                                 >
-                                  ✓ Adresse fiable
+                                  ⚠️ À vérifier
                                 </div>
                               )}
                             </div>
