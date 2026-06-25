@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Search,
   MapPin,
@@ -181,6 +181,38 @@ function ScannerEntreprises() {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
   const [totalDispo, setTotalDispo] = useState<number | null>(null);
+
+  // Restaurer depuis sessionStorage au montage
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('scanner_entreprises_v1');
+      if (!saved) return;
+      const d = JSON.parse(saved) as {
+        addresses: ScannedAddress[];
+        codePostal: string;
+        taille: string;
+        secteur: string;
+        limit: number;
+        totalDispo: number | null;
+      };
+      setAddresses(d.addresses ?? []);
+      setCodePostal(d.codePostal ?? '');
+      setTaille(d.taille ?? 'PME');
+      setSecteur(d.secteur ?? '');
+      setLimit(d.limit ?? 15);
+      setTotalDispo(d.totalDispo ?? null);
+    } catch { /* ignore */ }
+  }, []);
+
+  // Sauvegarder dans sessionStorage à chaque changement utile
+  useEffect(() => {
+    if (addresses.length === 0) return;
+    try {
+      sessionStorage.setItem('scanner_entreprises_v1', JSON.stringify({
+        addresses, codePostal, taille, secteur, limit, totalDispo,
+      }));
+    } catch { /* ignore */ }
+  }, [addresses, codePostal, taille, secteur, limit, totalDispo]);
 
   async function search() {
     if (!codePostal.trim()) {
@@ -798,6 +830,45 @@ function ScannerEquipes() {
   const [solarStatus, setSolarStatus] = useState<Record<string, 'idle' | 'loading' | 'ok' | 'error' | 'demo'>>({});
   const [solarDates, setSolarDates] = useState<Record<string, string | null>>({});
 
+  // Restaurer depuis sessionStorage au montage
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('scanner_equipes_v1');
+      if (!saved) return;
+      const d = JSON.parse(saved) as {
+        items: InstallationExistante[];
+        total: number | null;
+        added: Record<string, boolean>;
+        solarStatus: Record<string, 'idle' | 'ok' | 'error' | 'demo'>;
+        solarDates: Record<string, string | null>;
+        dept: string;
+        commune: string;
+        tri: string;
+        limit: number;
+        strict: boolean;
+      };
+      setItems(d.items ?? []);
+      setTotal(d.total ?? null);
+      setAdded(d.added ?? {});
+      setSolarStatus(d.solarStatus ?? {});
+      setSolarDates(d.solarDates ?? {});
+      setDept(d.dept ?? '34');
+      setCommune(d.commune ?? '');
+      setTri(d.tri ?? 'anciennes');
+      setLimit(d.limit ?? 15);
+      setStrict(d.strict ?? true);
+    } catch { /* ignore */ }
+  }, []);
+
+  // Sauvegarder dans sessionStorage à chaque changement
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('scanner_equipes_v1', JSON.stringify({
+        items, total, added, solarStatus, solarDates, dept, commune, tri, limit, strict,
+      }));
+    } catch { /* ignore */ }
+  }, [items, total, added, solarStatus, solarDates, dept, commune, tri, limit, strict]);
+
   async function search() {
     setLoading(true);
     setError(null);
@@ -929,10 +1000,16 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
           <strong>Mode 100% fiable (par défaut)</strong> : on ne garde que les
           vrais clients finaux <em>propriétaires-occupants</em> (industrie, commerce,
           hôtel, école, mairie, agriculture…). Exclus automatiquement : SCI,
-          foncières, holdings, <strong>opérateurs/installateurs du solaire</strong>
-          (Engie, Santerne, Phoebus, Locindus, sociétés en "ENERGIES"…), et noms
-          de projet (PARC, CENTRALE, SPV…). Ces leads sont des vrais clients
-          potentiels — pas des concurrents.
+          foncières, holdings, opérateurs/installateurs du solaire, et noms de
+          projet (PARC, CENTRALE, SPV…).
+        </p>
+        <p className="text-xs mt-1.5" style={{ color: '#065F46', background: '#A7F3D0', borderRadius: 6, padding: '6px 8px' }}>
+          💡 <strong>Je ne vois pas les panneaux sur Google Maps ?</strong> Normal :
+          les photos satellite ont souvent <strong>2 à 5 ans de retard</strong>. Le
+          registre ODRÉ liste uniquement les installations <em>raccordées au réseau
+          Enedis et toujours actives</em> — si une installation est fermée, elle
+          est retirée du registre. Pour confirmer, clique <em>"Confirmer via Google"</em>
+          : ça analyse le bâtiment en temps réel, indépendamment de la photo satellite.
         </p>
       </div>
 
