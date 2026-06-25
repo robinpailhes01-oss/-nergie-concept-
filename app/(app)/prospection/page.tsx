@@ -795,12 +795,16 @@ function ScannerEquipes() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState<Record<string, boolean>>({});
+  const [solarStatus, setSolarStatus] = useState<Record<string, 'idle' | 'loading' | 'ok' | 'error' | 'demo'>>({});
+  const [solarDates, setSolarDates] = useState<Record<string, string | null>>({});
 
   async function search() {
     setLoading(true);
     setError(null);
     setItems([]);
     setTotal(null);
+    setSolarStatus({});
+    setSolarDates({});
     try {
       const qs = new URLSearchParams({
         dept,
@@ -831,6 +835,27 @@ function ScannerEquipes() {
       setError('Recherche impossible. Réessayer.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function verifSolar(item: InstallationExistante) {
+    const ent = item.entreprise;
+    if (!ent?.adresse) return;
+    const key = item.nom_installation + item.commune;
+    setSolarStatus((s) => ({ ...s, [key]: 'loading' }));
+    try {
+      const adresseFull = `${ent.adresse} ${ent.code_postal} ${ent.ville}`;
+      const r = await fetch(`/api/solar?address=${encodeURIComponent(adresseFull)}`);
+      if (!r.ok) throw new Error();
+      const solar = (await r.json()) as SolarApiResponse;
+      if (solar.demo) {
+        setSolarStatus((s) => ({ ...s, [key]: 'demo' }));
+      } else {
+        setSolarStatus((s) => ({ ...s, [key]: 'ok' }));
+        setSolarDates((d) => ({ ...d, [key]: solar.imagery_date }));
+      }
+    } catch {
+      setSolarStatus((s) => ({ ...s, [key]: 'error' }));
     }
   }
 
@@ -1059,28 +1084,67 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
                                 rel="noreferrer"
                                 className="font-medium hover:underline inline-flex items-start gap-1 group"
                                 style={{ color: '#1F2937' }}
-                                title="Cliquer pour vérifier les panneaux en vue satellite"
+                                title="Vue satellite — vérifier la présence des panneaux"
                               >
                                 {ent.adresse}
                                 <ExternalLink className="w-3 h-3 mt-0.5 shrink-0 opacity-40 group-hover:opacity-100" style={{ color: '#F5821F' }} />
                               </a>
-                              {strict ? (
-                                <div
-                                  className="mt-1.5 text-[11px] font-bold inline-flex items-center gap-1 px-2 py-1 rounded"
-                                  style={{ background: '#ECFDF5', color: '#065F46', border: '1px solid #6EE7B7' }}
-                                  title="Adresse vérifiée : entreprise propriétaire-occupante + nom d'installation correspondant"
-                                >
-                                  ✓ 100% fiable
-                                </div>
-                              ) : (
-                                <div
-                                  className="mt-1.5 text-[11px] font-semibold inline-flex items-center gap-1 px-2 py-1 rounded"
-                                  style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}
-                                  title="Mode élargi : adresse à vérifier sur Maps"
-                                >
-                                  ⚠️ À vérifier
-                                </div>
-                              )}
+                              <div className="mt-1.5 flex flex-col gap-1">
+                                {/* Niveau 1 : fiabilité logique (SIRENE + NAF + nom) */}
+                                {strict && (
+                                  <div
+                                    className="text-[11px] font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded"
+                                    style={{ background: '#ECFDF5', color: '#065F46', border: '1px solid #6EE7B7' }}
+                                  >
+                                    ✓ SIRENE + NAF OK
+                                  </div>
+                                )}
+                                {/* Niveau 2 : confirmation Google Solar */}
+                                {solarStatus[key] === 'idle' || solarStatus[key] === undefined ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => verifSolar(item)}
+                                    className="text-[11px] font-semibold inline-flex items-center gap-1 px-2 py-0.5 rounded transition-colors"
+                                    style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}
+                                    title="Vérifier via Google Solar API que ce bâtiment existe bien"
+                                  >
+                                    <Search className="w-2.5 h-2.5" /> Confirmer via Google
+                                  </button>
+                                ) : solarStatus[key] === 'loading' ? (
+                                  <span
+                                    className="text-[11px] inline-flex items-center gap-1 px-2 py-0.5 rounded"
+                                    style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}
+                                  >
+                                    <span className="spinner spinner-dark" /> Vérification…
+                                  </span>
+                                ) : solarStatus[key] === 'ok' ? (
+                                  <div
+                                    className="text-[11px] font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded"
+                                    style={{ background: '#D1FAE5', color: '#065F46', border: '1px solid #34D399' }}
+                                    title="Google Solar confirme ce bâtiment dans sa base de données"
+                                  >
+                                    ✓ Google Solar OK
+                                    {solarDates[key] && (
+                                      <span className="font-normal opacity-80">· photo {solarDates[key]}</span>
+                                    )}
+                                  </div>
+                                ) : solarStatus[key] === 'demo' ? (
+                                  <div
+                                    className="text-[11px] inline-flex items-center gap-1 px-2 py-0.5 rounded"
+                                    style={{ background: '#F3F4F6', color: '#6B7280', border: '1px solid #D1D5DB' }}
+                                  >
+                                    Clé Solar API non configurée
+                                  </div>
+                                ) : (
+                                  <div
+                                    className="text-[11px] inline-flex items-center gap-1 px-2 py-0.5 rounded"
+                                    style={{ background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}
+                                    title="Google Solar ne trouve pas ce bâtiment — vérifier l'adresse manuellement"
+                                  >
+                                    ✗ Non trouvé par Google
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           ) : (
                             <div>
