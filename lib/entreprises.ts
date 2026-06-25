@@ -119,8 +119,8 @@ const NAF_RACINES_FIABLES: readonly string[] = [
   '10', '11', '12', '13', '14', '15', '16', '17', '18', // industrie
   '19', '20', '21', '22', '23', '24', '25', '26', '27',
   '28', '29', '30', '31', '32', '33',
-  '35', '36', '37', '38', '39',                         // énergie, eau, déchets
-  '41', '42', '43',                                     // construction
+  '36', '37', '38', '39',                               // eau, déchets (PAS 35 : producteurs d'électricité)
+  '41', '42',                                           // construction (PAS 43 : installateurs élec)
   '45', '46', '47',                                     // commerce
   '49', '50', '51', '52', '53',                         // transport/logistique
   '55', '56',                                           // hôtels / restauration
@@ -135,6 +135,8 @@ const NAF_RACINES_FIABLES: readonly string[] = [
 
 // NAF où l'entreprise détient des actifs scattered (panneaux ailleurs)
 const NAF_RACINES_NON_FIABLES: readonly string[] = [
+  '35', // production / distribution d'électricité (SPV, opérateurs)
+  '43', // travaux d'installation électrique / installateurs solaires
   '64', // activités des services financiers
   '65', // assurance
   '66', // activités auxiliaires de finance
@@ -162,6 +164,52 @@ const PATTERNS_PROJET = [
 
 export function nomEstProjet(nomInstallation: string): boolean {
   return PATTERNS_PROJET.some((p) => p.test(nomInstallation));
+}
+
+// Noms d'entreprise qui trahissent un OPÉRATEUR du solaire (installateur,
+// SPV, producteur, loueur) plutôt qu'un vrai client final. Ces sociétés
+// posent les panneaux SUR LE TOIT D'UN AUTRE — leur siège SIRENE n'est
+// jamais le bâtiment équipé.
+const PATTERNS_OPERATEUR_SOLAIRE = [
+  /\bSOLAR(E|IS|IUM)?\b/i,
+  /\bSOLAIRE?S?\b/i,
+  /\bPHOTOVOLT/i,
+  /\bENERGI?ES?\b/i,        // "ENERGIE", "ENERGIES" (sans préfixe d'entreprise)
+  /\bECO ?SUN\b/i,
+  /\bSUNPOWER\b/i,
+  /\bSUN ?ELEC/i,
+  /\bGREENVOLT\b/i,
+  /\bPHOEBUS\b/i,           // dieu du soleil — toujours opérateur
+  /\bHELIOS\b/i,
+  /\bSANTERNE\b/i,          // installateur Vinci
+  /\bENGIE\b/i,
+  /\bEDF\b/i,
+  /\bTOTAL ?ENERGIES?\b/i,
+  /\bLOCINDUS\b/i,          // leasing Caisse d'Épargne pour le solaire
+  /\bCAP ?VERT\b/i,
+  /\bAKUO\b/i,
+  /\bNEOEN\b/i,
+  /\bVOLTALIA\b/i,
+  /\bURBASOLAR\b/i,
+  /\bCORSICA ?SOLE\b/i,
+  /\bGENERALE ?DU ?SOLAIRE\b/i,
+  /\bRESERVOIR ?SUN\b/i,
+  /\bWATT\b/i,
+  /\bKWH?\b/i,
+  /\bMWH?\b/i,
+];
+
+export function estOperateurSolaire(
+  nom: string | null | undefined,
+  naf: string | null | undefined,
+): boolean {
+  if (naf) {
+    const racine = naf.replace(/\./g, '').substring(0, 2);
+    // NAF 35.11Z = production d'électricité ; 43.21A/B = installation élec
+    if (racine === '35' || racine === '43') return true;
+  }
+  if (!nom) return false;
+  return PATTERNS_OPERATEUR_SOLAIRE.some((p) => p.test(nom));
 }
 
 // Match conservateur : un token significatif de ≥ 5 caractères en

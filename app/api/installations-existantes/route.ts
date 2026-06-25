@@ -16,6 +16,7 @@
 
 import { NextResponse } from 'next/server';
 import {
+  estOperateurSolaire,
   nafEstFiable,
   nettoyerNomInstallation,
   nomEstProjet,
@@ -284,12 +285,15 @@ export async function GET(req: Request) {
   // En mode strict, on ne garde que les leads ULTRA fiables :
   //   - une entreprise SIRENE locale trouvée
   //   - son NAF est "propriétaire-occupant" (industrie, commerce…)
+  //   - ce N'EST PAS un opérateur du solaire (installateur, SPV, loueur)
+  //     qui pose sur le toit d'un autre
   //   - le nom d'entreprise et le nom d'installation se correspondent
   if (strict) {
     result = result.filter(
       (r) =>
         r.entreprise &&
         nafEstFiable(r.entreprise.naf) &&
+        !estOperateurSolaire(r.entreprise.nom, r.entreprise.naf) &&
         nomsCorrespondent(r.entreprise.nom, r.nom_installation),
     );
   }

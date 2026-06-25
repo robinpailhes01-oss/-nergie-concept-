@@ -927,10 +927,12 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
         </p>
         <p className="text-xs mt-2" style={{ color: '#047857' }}>
           <strong>Mode 100% fiable (par défaut)</strong> : on ne garde que les
-          installations où le NAF de l'entreprise est <em>propriétaire-occupant</em>
-          (industrie, commerce, hôtel, école, mairie, agriculture…) ET où le nom
-          correspond. Les SCI, foncières, holdings et noms de projet (PARC, CENTRALE…)
-          sont automatiquement exclus — leurs panneaux sont souvent à une autre adresse.
+          vrais clients finaux <em>propriétaires-occupants</em> (industrie, commerce,
+          hôtel, école, mairie, agriculture…). Exclus automatiquement : SCI,
+          foncières, holdings, <strong>opérateurs/installateurs du solaire</strong>
+          (Engie, Santerne, Phoebus, Locindus, sociétés en "ENERGIES"…), et noms
+          de projet (PARC, CENTRALE, SPV…). Ces leads sont des vrais clients
+          potentiels — pas des concurrents.
         </p>
       </div>
 
