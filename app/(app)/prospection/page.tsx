@@ -896,6 +896,13 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
           registre donne la commune ; l'adresse exacte est retrouvée
           automatiquement via SIRENE quand le nom correspond à une entreprise.
         </p>
+        <p className="text-xs mt-2" style={{ color: '#047857' }}>
+          ℹ️ L'adresse affichée est celle de l'entreprise propriétaire (SIRENE).
+          Les panneaux peuvent se trouver sur un autre bâtiment du même groupe
+          (SCI, foncière, multi-sites). Quand le <strong>nom d'installation
+          diffère</strong> du nom d'entreprise, un avertissement orange t'invite
+          à vérifier sur Maps. Clique l'adresse pour ouvrir directement en vue satellite.
+        </p>
       </div>
 
       <div className="card mb-6">
@@ -1027,7 +1034,27 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
                         </td>
                         <td className="py-3 pr-4 text-xs">
                           {ent?.adresse ? (
-                            <span className="font-medium">{ent.adresse}</span>
+                            <div>
+                              <a
+                                href={`https://www.google.com/maps/place/${encodeURIComponent(`${ent.adresse} ${ent.code_postal} ${ent.ville}`)}/@${ent.lat ?? 0},${ent.lng ?? 0},80m/data=!3m1!1e3`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-medium hover:text-orange inline-flex items-center gap-1 group"
+                                title="Ouvrir en vue satellite pour vérifier les panneaux"
+                              >
+                                {ent.adresse}
+                                <ExternalLink className="w-3 h-3 opacity-50 group-hover:opacity-100" />
+                              </a>
+                              {ent.nom !== item.nom_installation && (
+                                <div
+                                  className="mt-1 text-[10px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded"
+                                  style={{ background: '#FEF3C7', color: '#92400E' }}
+                                  title="Le nom de l'installation diffère du nom d'entreprise : les panneaux peuvent être sur un autre bâtiment de la société (vérifier sur Maps)."
+                                >
+                                  ⚠ Vérifier emplacement panneaux
+                                </div>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-text-muted">
                               {item.commune} (commune seule —{' '}
