@@ -27,6 +27,8 @@ import {
   EFFECTIF_LABELS,
   SECTION_LABELS,
   SECTIONS_SOLAR_PRIORITAIRES,
+  estOperateurSolaire,
+  nafEstFiable,
   nomsCorrespondent,
 } from '@/lib/entreprises';
 import type { Prospect, SolarApiResponse } from '@/types';
@@ -902,11 +904,25 @@ function ScannerEquipes() {
       }
       setItems(json.installations);
       setTotal(json.total);
+      // Auto-vérification Google Solar en arrière-plan sur les 10 premiers
+      void autoVerifierTop(json.installations.slice(0, 10));
     } catch {
       setError('Recherche impossible. Réessayer.');
     } finally {
       setLoading(false);
     }
+  }
+
+  async function autoVerifierTop(liste: InstallationExistante[]) {
+    const queue = liste.filter((i) => i.entreprise?.adresse);
+    await Promise.all(
+      [0, 1, 2, 3].map(async () => {
+        while (queue.length > 0) {
+          const item = queue.shift();
+          if (item) await verifSolar(item);
+        }
+      }),
+    );
   }
 
   async function verifSolar(item: InstallationExistante) {
@@ -984,6 +1000,31 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
     }
   }
 
+  function calcFiabilite(item: InstallationExistante): number {
+    const ent = item.entreprise;
+    if (!ent) return 0;
+    let score = 0;
+    if (ent.adresse) score += 30;
+    if (nafEstFiable(ent.naf) && !estOperateurSolaire(ent.nom, ent.naf)) score += 20;
+    if (nomsCorrespondent(ent.nom, item.nom_installation)) score += 20;
+    const key = item.nom_installation + item.commune;
+    if (solarStatus[key] === 'ok') {
+      score += 20;
+      const d = solarDates[key];
+      if (d) {
+        const annee = parseInt(d.substring(0, 4), 10);
+        if (!Number.isNaN(annee) && new Date().getFullYear() - annee <= 3) {
+          score += 10;
+        }
+      }
+    }
+    return Math.min(score, 100);
+  }
+
+  const itemsTries = [...items].sort(
+    (a, b) => calcFiabilite(b) - calcFiabilite(a),
+  );
+
   return (
     <>
       <div
@@ -1004,12 +1045,17 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
           projet (PARC, CENTRALE, SPV…).
         </p>
         <p className="text-xs mt-1.5" style={{ color: '#065F46', background: '#A7F3D0', borderRadius: 6, padding: '6px 8px' }}>
-          💡 <strong>Je ne vois pas les panneaux sur Google Maps ?</strong> Normal :
-          les photos satellite ont souvent <strong>2 à 5 ans de retard</strong>. Le
-          registre ODRÉ liste uniquement les installations <em>raccordées au réseau
-          Enedis et toujours actives</em> — si une installation est fermée, elle
-          est retirée du registre. Pour confirmer, clique <em>"Confirmer via Google"</em>
-          : ça analyse le bâtiment en temps réel, indépendamment de la photo satellite.
+          💡 <strong>Score de fiabilité 0–100</strong> calculé automatiquement :
+          adresse SIRENE locale (+30) · NAF propriétaire-occupant (+20) ·
+          nom correspond (+20) · Google Solar confirme le bâtiment (+20) ·
+          photo récente &lt;3 ans (+10). Les 10 premiers résultats sont
+          vérifiés <strong>automatiquement</strong> via Google Solar en arrière-plan.
+          Triés par score décroissant — les <strong>90+</strong> sont prêts à appeler.
+        </p>
+        <p className="text-xs mt-1.5" style={{ color: '#065F46' }}>
+          ℹ️ <strong>Panneaux non visibles sur Google Maps ?</strong> Les photos
+          satellite ont 2–5 ans de retard, mais le registre ODRÉ retire les
+          installations désactivées. Si un lead apparaît, il produit toujours.
         </p>
       </div>
 
@@ -1093,6 +1139,7 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs font-semibold text-text-muted uppercase tracking-wide border-b border-border">
+                    <th className="pb-3 pr-3">Fiabilité</th>
                     <th className="pb-3 pr-4">Entreprise / installation</th>
                     <th className="pb-3 pr-4">Adresse</th>
                     <th className="pb-3 pr-4">Puissance</th>
@@ -1101,17 +1148,51 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => {
+                  {itemsTries.map((item) => {
                     const key = item.nom_installation + item.commune;
                     const ent = item.entreprise;
                     const age = item.annee
                       ? new Date().getFullYear() - item.annee
                       : null;
+                    const score = calcFiabilite(item);
+                    const scoreColor =
+                      score >= 90 ? '#065F46'
+                        : score >= 70 ? '#0D7C66'
+                          : score >= 50 ? '#D97706'
+                            : '#9CA3AF';
+                    const scoreBg =
+                      score >= 90 ? '#D1FAE5'
+                        : score >= 70 ? '#ECFDF5'
+                          : score >= 50 ? '#FEF3C7'
+                            : '#F3F4F6';
                     return (
                       <tr
                         key={key}
                         className="border-b border-border/60 last:border-0"
+                        style={score >= 90 ? { background: '#F0FDF4' } : undefined}
                       >
+                        <td className="py-3 pr-3 align-top">
+                          <div
+                            className="rounded-lg px-2 py-1.5 text-center min-w-[58px]"
+                            style={{ background: scoreBg, border: `1px solid ${scoreColor}33` }}
+                            title={
+                              score >= 90
+                                ? 'Lead vérifié : appel direct possible'
+                                : score >= 70
+                                  ? 'Lead très fiable, à vérifier avant déplacement'
+                                  : score >= 50
+                                    ? 'Lead moyen, à confirmer'
+                                    : 'Lead faible, à éviter'
+                            }
+                          >
+                            <div className="font-display font-bold text-lg leading-none" style={{ color: scoreColor }}>
+                              {score}
+                            </div>
+                            <div className="text-[9px] font-bold uppercase tracking-wide mt-0.5" style={{ color: scoreColor }}>
+                              {solarStatus[key] === 'loading' ? '…' : score >= 90 ? 'top' : score >= 70 ? 'fiable' : score >= 50 ? 'à vérif' : 'faible'}
+                            </div>
+                          </div>
+                        </td>
                         <td className="py-3 pr-4 max-w-xs">
                           <div className="flex items-center gap-3">
                             {ent?.lat && ent?.lng ? (
