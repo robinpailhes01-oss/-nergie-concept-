@@ -838,7 +838,7 @@ interface InstallationExistante {
 }
 
 function ScannerEquipes() {
-  const [dept, setDept] = useState('34');
+  const [dept, setDept] = useState('30');
   const [commune, setCommune] = useState('');
   const [tri, setTri] = useState('anciennes');
   const [limit, setLimit] = useState(15);
@@ -874,7 +874,7 @@ function ScannerEquipes() {
       setAdded(d.added ?? {});
       setSolarStatus(d.solarStatus ?? {});
       setSolarDates(d.solarDates ?? {});
-      setDept(d.dept ?? '34');
+      setDept(d.dept ?? '30');
       setCommune(d.commune ?? '');
       setTri(d.tri ?? 'anciennes');
       setLimit(d.limit ?? 15);

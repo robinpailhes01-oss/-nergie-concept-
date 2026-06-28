@@ -9,6 +9,26 @@ interface Props {
   prospects: Prospect[];
 }
 
+function getListeType(p: Prospect) {
+  const prenom = p.prenom ?? '';
+  if (prenom === '(B2B équipé)' || p.notes?.includes('Lead MAINTENANCE')) {
+    return { label: '🔧 Équipé', color: '#065F46', bg: '#D1FAE5' };
+  }
+  if (prenom === '(B2B sans panneaux)' || p.notes?.includes('NOUVELLE INSTALLATION')) {
+    return { label: '⚡ Installer', color: '#1D4ED8', bg: '#DBEAFE' };
+  }
+  if (prenom === '(B2B)') {
+    return { label: '🏢 B2B', color: '#D97706', bg: '#FEF3C7' };
+  }
+  return { label: '👤 Partic.', color: '#6B7280', bg: '#F3F4F6' };
+}
+
+function prospectName(p: Prospect) {
+  const prenom = p.prenom ?? '';
+  if (prenom.startsWith('(B2B')) return p.nom;
+  return `${prenom} ${p.nom}`.trim();
+}
+
 export function RecentProspects({ prospects }: Props) {
   const recent = prospects.slice(0, 5);
 
@@ -35,7 +55,7 @@ export function RecentProspects({ prospects }: Props) {
           <thead>
             <tr className="text-left text-xs font-semibold text-text-muted uppercase tracking-wide border-b border-border">
               <th className="pb-3 pr-4">Prospect</th>
-              <th className="pb-3 pr-4">Ville</th>
+              <th className="pb-3 pr-4">Type</th>
               <th className="pb-3 pr-4">Montant</th>
               <th className="pb-3">Statut</th>
             </tr>
@@ -48,40 +68,44 @@ export function RecentProspects({ prospects }: Props) {
                 </td>
               </tr>
             )}
-            {recent.map((p) => (
-              <tr
-                key={p.id}
-                className="border-b border-border/60 last:border-0 hover:bg-background/60 transition-colors"
-              >
-                <td className="py-3 pr-4">
-                  <div className="flex items-center gap-3">
-                    <ProspectThumb lat={p.latitude} lng={p.longitude} />
-                    <div>
-                      <div className="font-semibold">
-                        {p.prenom} {p.nom}
-                      </div>
-                      <div className="text-xs text-text-muted">
-                        {p.email ?? '—'}
+            {recent.map((p) => {
+              const type = getListeType(p);
+              return (
+                <tr
+                  key={p.id}
+                  className="border-b border-border/60 last:border-0 hover:bg-background/60 transition-colors"
+                >
+                  <td className="py-3 pr-4">
+                    <div className="flex items-center gap-3">
+                      <ProspectThumb lat={p.latitude} lng={p.longitude} />
+                      <div>
+                        <div className="font-semibold">{prospectName(p)}</div>
+                        <div className="text-xs text-text-muted flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          {p.ville}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </td>
-                <td className="py-3 pr-4">
-                  <div className="flex items-center gap-1 text-text-muted">
-                    <MapPin className="w-3 h-3" />
-                    {p.ville}
-                  </div>
-                </td>
-                <td className="py-3 pr-4 font-semibold">
-                  {p.cout_installation_ttc
-                    ? formatEuros(p.cout_installation_ttc)
-                    : '—'}
-                </td>
-                <td className="py-3">
-                  <StatutBadge statut={p.statut} />
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="py-3 pr-4">
+                    <span
+                      className="text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap"
+                      style={{ color: type.color, background: type.bg }}
+                    >
+                      {type.label}
+                    </span>
+                  </td>
+                  <td className="py-3 pr-4 font-semibold">
+                    {p.cout_installation_ttc
+                      ? formatEuros(p.cout_installation_ttc)
+                      : '—'}
+                  </td>
+                  <td className="py-3">
+                    <StatutBadge statut={p.statut} />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
