@@ -298,6 +298,17 @@ export async function GET(req: Request) {
     );
   }
 
+  // Déduplication par SIREN (une entreprise = une ligne, même si elle a
+  // plusieurs installations dans la même zone)
+  const seenSiren = new Set<string>();
+  result = result.filter((r) => {
+    const siren = r.entreprise?.siren;
+    if (!siren) return true;
+    if (seenSiren.has(siren)) return false;
+    seenSiren.add(siren);
+    return true;
+  });
+
   return NextResponse.json({
     installations: result.slice(0, limit),
     count: result.length,

@@ -842,6 +842,7 @@ function ScannerEquipes() {
   const [commune, setCommune] = useState('');
   const [tri, setTri] = useState('anciennes');
   const [limit, setLimit] = useState(15);
+  const [pmax, setPmax] = useState(500);
   const [strict, setStrict] = useState(true);
   const [items, setItems] = useState<InstallationExistante[]>([]);
   const [total, setTotal] = useState<number | null>(null);
@@ -855,7 +856,7 @@ function ScannerEquipes() {
   // Restaurer depuis sessionStorage au montage
   useEffect(() => {
     try {
-      const saved = sessionStorage.getItem('scanner_equipes_v1');
+      const saved = sessionStorage.getItem('scanner_equipes_v2');
       if (!saved) return;
       const d = JSON.parse(saved) as {
         items: InstallationExistante[];
@@ -867,6 +868,7 @@ function ScannerEquipes() {
         commune: string;
         tri: string;
         limit: number;
+        pmax: number;
         strict: boolean;
       };
       setItems(d.items ?? []);
@@ -878,6 +880,7 @@ function ScannerEquipes() {
       setCommune(d.commune ?? '');
       setTri(d.tri ?? 'anciennes');
       setLimit(d.limit ?? 15);
+      setPmax(d.pmax ?? 500);
       setStrict(d.strict ?? true);
     } catch { /* ignore */ }
   }, []);
@@ -885,11 +888,11 @@ function ScannerEquipes() {
   // Sauvegarder dans sessionStorage à chaque changement
   useEffect(() => {
     try {
-      sessionStorage.setItem('scanner_equipes_v1', JSON.stringify({
-        items, total, added, solarStatus, solarDates, dept, commune, tri, limit, strict,
+      sessionStorage.setItem('scanner_equipes_v2', JSON.stringify({
+        items, total, added, solarStatus, solarDates, dept, commune, tri, limit, pmax, strict,
       }));
     } catch { /* ignore */ }
-  }, [items, total, added, solarStatus, solarDates, dept, commune, tri, limit, strict]);
+  }, [items, total, added, solarStatus, solarDates, dept, commune, tri, limit, pmax, strict]);
 
   async function search() {
     setLoading(true);
@@ -904,6 +907,8 @@ function ScannerEquipes() {
         dept,
         tri,
         limit: String(limit),
+        pmin: '20',
+        pmax: String(pmax),
         strict: strict ? '1' : '0',
       });
       if (commune.trim()) qs.set('commune', commune.trim());
@@ -1117,6 +1122,16 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
             <option value="puissance">Plus puissantes</option>
           </select>
           <select
+            value={pmax}
+            onChange={(e) => setPmax(Number(e.target.value))}
+            className="input h-12"
+            title="Taille maximale de l'installation (filtre les fermes solaires)"
+          >
+            <option value={100}>≤ 100 kW (petits bâtiments)</option>
+            <option value={500}>≤ 500 kW (PME/commerces)</option>
+            <option value={2000}>≤ 2 000 kW (tout)</option>
+          </select>
+          <select
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
             className="input h-12"
@@ -1146,8 +1161,8 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
           </Button>
         </div>
         <p className="text-xs text-text-muted mt-3">
-          ☀️ Plage 9 kW – 2 MW : artisans, commerces, PME et grandes surfaces
-          (les fermes au sol géantes et résidentiels anonymisés sont exclus).
+          ☀️ Plage <strong>20 kW – {pmax} kW</strong> : artisans, commerces, PME et grandes surfaces.
+          {pmax <= 500 && ' Les fermes agri-solaires (>500 kW) sont exclues — elles ne sont pas des toitures.'}
         </p>
       </div>
 
