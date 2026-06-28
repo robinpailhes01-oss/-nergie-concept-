@@ -13,6 +13,7 @@ import {
   Home,
   Building2,
   Hash,
+  Zap,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
@@ -33,7 +34,7 @@ import {
 } from '@/lib/entreprises';
 import type { Prospect, SolarApiResponse } from '@/types';
 
-type Mode = 'particuliers' | 'entreprises' | 'equipes';
+type Mode = 'particuliers' | 'entreprises' | 'equipes' | 'toitures';
 
 interface InstallationConnue {
   nom: string;
@@ -128,12 +129,27 @@ export default function ProspectionPage() {
             Maintenance
           </span>
         </ModeTab>
+        <ModeTab
+          active={mode === 'toitures'}
+          icon={Zap}
+          onClick={() => setMode('toitures')}
+        >
+          À démarcher
+          <span
+            className="ml-2 text-[10px] px-1.5 py-0.5 rounded font-bold"
+            style={{ background: '#2563EB', color: '#fff' }}
+          >
+            Nouveau
+          </span>
+        </ModeTab>
       </div>
 
       {mode === 'entreprises' ? (
         <ScannerEntreprises />
       ) : mode === 'equipes' ? (
         <ScannerEquipes />
+      ) : mode === 'toitures' ? (
+        <ScannerToitures />
       ) : (
         <ScannerParticuliers />
       )}
@@ -1371,6 +1387,398 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
 }
 
 // ============================================================
+// Mode À DÉMARCHER (toitures ≥90 m² sans panneaux — SIRENE + Solar)
+// ============================================================
+
+const MIN_TOIT_M2 = 90;
+
+function ScannerToitures() {
+  const [codePostal, setCodePostal] = useState('');
+  const [secteur, setSecteur] = useState('');
+  const [limit, setLimit] = useState(15);
+  const [addresses, setAddresses] = useState<ScannedAddress[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [error, setError] = useState<string | null>(null);
+  const [totalDispo, setTotalDispo] = useState<number | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('scanner_toitures_v1');
+      if (!saved) return;
+      const d = JSON.parse(saved) as {
+        addresses: ScannedAddress[];
+        codePostal: string;
+        secteur: string;
+        limit: number;
+        totalDispo: number | null;
+      };
+      setAddresses(d.addresses ?? []);
+      setCodePostal(d.codePostal ?? '');
+      setSecteur(d.secteur ?? '');
+      setLimit(d.limit ?? 15);
+      setTotalDispo(d.totalDispo ?? null);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (addresses.length === 0) return;
+    try {
+      sessionStorage.setItem('scanner_toitures_v1', JSON.stringify({
+        addresses, codePostal, secteur, limit, totalDispo,
+      }));
+    } catch { /* ignore */ }
+  }, [addresses, codePostal, secteur, limit, totalDispo]);
+
+  async function search() {
+    if (!codePostal.trim()) {
+      setError('Renseigne un code postal (ex : 34170).');
+      return;
+    }
+    if (!/^\d{5}$/.test(codePostal.trim())) {
+      setError('Code postal invalide (5 chiffres).');
+      return;
+    }
+    setSearching(true);
+    setError(null);
+    setAddresses([]);
+    setProgress({ done: 0, total: 0 });
+    setTotalDispo(null);
+    try {
+      const qs = new URLSearchParams({
+        code_postal: codePostal.trim(),
+        limit: String(limit),
+      });
+      if (secteur) qs.set('secteur', secteur);
+      const r = await fetch(`/api/prospection-entreprises?${qs.toString()}`);
+      const json = (await r.json()) as
+        | { entreprises: Array<ScannedAddress & { entreprise: EntrepriseMeta }>; count: number; total: number }
+        | { error: string };
+      if (!r.ok || !('entreprises' in json)) {
+        setError('error' in json ? json.error : 'Erreur recherche');
+        return;
+      }
+      if (json.entreprises.length === 0) {
+        setError('Aucune entreprise ne correspond aux critères dans ce code postal.');
+        return;
+      }
+      const liste = json.entreprises.map((e) => ({ ...e, status: 'pending' as const }));
+      setAddresses(liste);
+      setTotalDispo(json.total);
+      void flagDejaEquipees(liste);
+      void scanAll(liste);
+    } catch {
+      setError('Recherche entreprises impossible.');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function flagDejaEquipees(liste: ScannedAddress[]) {
+    const villes = [...new Set(liste.map((a) => a.city).filter(Boolean))];
+    const parVille = new Map<string, InstallationConnue[]>();
+    await Promise.all(
+      villes.map(async (ville) => {
+        try {
+          const r = await fetch(`/api/installations-existantes?names_only=1&commune=${encodeURIComponent(ville)}`);
+          if (!r.ok) return;
+          const j = (await r.json()) as { installations: InstallationConnue[] };
+          parVille.set(ville, j.installations ?? []);
+        } catch { /* best-effort */ }
+      }),
+    );
+    setAddresses((all) =>
+      all.map((a) => {
+        const installs = parVille.get(a.city) ?? [];
+        const nomCible = a.entreprise?.nom ?? '';
+        const match = installs.find((inst) => nomsCorrespondent(nomCible, inst.nom));
+        return match ? { ...a, deja_equipee: match } : a;
+      }),
+    );
+  }
+
+  async function scanAll(liste: ScannedAddress[]) {
+    setScanning(true);
+    setProgress({ done: 0, total: liste.length });
+    let cursor = 0;
+    let done = 0;
+    async function worker(): Promise<void> {
+      while (cursor < liste.length) {
+        const i = cursor++;
+        const target = liste[i];
+        if (!target) continue;
+        setAddresses((all) => {
+          const copy = [...all];
+          if (copy[i]) copy[i] = { ...copy[i]!, status: 'loading' };
+          return copy;
+        });
+        try {
+          const r = await fetch(`/api/solar?address=${encodeURIComponent(target.label)}`);
+          if (!r.ok) throw new Error();
+          const solar = (await r.json()) as SolarApiResponse;
+          setAddresses((all) => {
+            const copy = [...all];
+            if (copy[i]) copy[i] = { ...copy[i]!, status: 'done', solar };
+            return copy;
+          });
+        } catch {
+          setAddresses((all) => {
+            const copy = [...all];
+            if (copy[i]) copy[i] = { ...copy[i]!, status: 'error' };
+            return copy;
+          });
+        }
+        done++;
+        setProgress({ done, total: liste.length });
+      }
+    }
+    await Promise.all(Array.from({ length: PARALLEL_WORKERS }, () => worker()));
+    setScanning(false);
+  }
+
+  async function addToPipeline(addr: ScannedAddress, originalIdx: number) {
+    if (!addr.solar) return;
+    const fin = calculerFinancier(
+      addr.solar.production.kwc,
+      addr.solar.production.production_annuelle_kwh,
+    );
+    const ent = addr.entreprise;
+    const notes = ent
+      ? `Prospect NOUVELLE INSTALLATION — toiture ${Math.round(addr.solar.toiture.surface_m2)} m² confirmée via Google Solar.
+SIREN : ${ent.siren}
+Activité (NAF) : ${ent.naf} — ${SECTION_LABELS[ent.section] ?? ent.section}
+Effectif : ${ent.effectif_label}
+Orientation : ${addr.solar.toiture.orientation_principale} · ${addr.solar.toiture.heures_ensoleillement}h ensoleillement/an
+Aucune installation solaire détectée dans le registre ODRÉ.
+Ajouté le ${new Date().toLocaleDateString('fr-FR')}.`
+      : `Prospect NOUVELLE INSTALLATION — toiture ${Math.round(addr.solar.toiture.surface_m2)} m².`;
+    const payload = {
+      nom: ent?.nom ?? 'Entreprise',
+      prenom: '(B2B sans panneaux)',
+      email: null,
+      telephone: null,
+      adresse: addr.label,
+      ville: addr.city,
+      code_postal: addr.postcode,
+      latitude: addr.lat,
+      longitude: addr.lng,
+      surface_toit_m2: addr.solar.toiture.surface_m2,
+      nb_panneaux_recommande: addr.solar.production.nb_panneaux,
+      production_annuelle_kwh: addr.solar.production.production_annuelle_kwh,
+      heures_ensoleillement: addr.solar.toiture.heures_ensoleillement,
+      orientation_principale: addr.solar.toiture.orientation_principale,
+      score_solaire: addr.solar.score_solaire,
+      qualite_imagerie: addr.solar.qualite,
+      puissance_kwc: addr.solar.production.kwc,
+      cout_installation_ttc: fin.cout_installation_ttc,
+      aides_totales: fin.aides_totales,
+      reste_a_charge: fin.reste_a_charge,
+      economie_annuelle: fin.economie_annuelle,
+      temps_retour_ans: fin.temps_retour_ans,
+      co2_evite_kg_an: fin.co2_evite_kg_an,
+      statut: 'nouveau' as const,
+      notes,
+    };
+    try {
+      const r = await fetch('/api/prospects', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) throw new Error('post failed');
+      const j = (await r.json()) as { prospect: Prospect; demo?: boolean };
+      if (j.demo) addLocalProspect(j.prospect);
+      setAddresses((all) => {
+        const copy = [...all];
+        if (copy[originalIdx]) copy[originalIdx] = { ...copy[originalIdx]!, prospect_id: j.prospect.id };
+        return copy;
+      });
+    } catch {
+      window.alert('Ajout au pipeline impossible. Vérifie ta connexion et réessaie.');
+    }
+  }
+
+  const allWithIdx = addresses.map((a, originalIdx) => ({ a, originalIdx }));
+
+  const qualified = allWithIdx
+    .filter(({ a }) => !a.deja_equipee)
+    .filter(({ a }) => {
+      if (a.status === 'error') return false;
+      if (a.status === 'done' && a.solar && !a.solar.demo) {
+        return a.solar.toiture.surface_m2 >= MIN_TOIT_M2;
+      }
+      return true;
+    })
+    .sort((x, y) => {
+      if (x.a.status === 'done' && y.a.status !== 'done') return -1;
+      if (x.a.status !== 'done' && y.a.status === 'done') return 1;
+      const finX = x.a.solar ? calculerFinancier(x.a.solar.production.kwc, x.a.solar.production.production_annuelle_kwh) : null;
+      const finY = y.a.solar ? calculerFinancier(y.a.solar.production.kwc, y.a.solar.production.production_annuelle_kwh) : null;
+      return (finY?.economie_annuelle ?? 0) - (finX?.economie_annuelle ?? 0);
+    });
+
+  const doneCount = addresses.filter((a) => a.status === 'done' || a.status === 'error').length;
+  const allDone = addresses.length > 0 && doneCount === addresses.length;
+  const equipeesCount = addresses.filter((a) => a.deja_equipee).length;
+  const tropPetitCount = addresses.filter(
+    (a) => a.status === 'done' && a.solar && !a.solar.demo && a.solar.toiture.surface_m2 < MIN_TOIT_M2 && !a.deja_equipee,
+  ).length;
+  const qualifiedDoneCount = qualified.filter(({ a }) => a.status === 'done' && a.solar && !a.solar.demo).length;
+
+  return (
+    <>
+      <div
+        className="card mb-6"
+        style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}
+      >
+        <p className="text-sm" style={{ color: '#1E40AF' }}>
+          <strong>Entreprises à démarcher — nouvelle installation</strong> — toitures ≥ {MIN_TOIT_M2} m²
+          sans panneaux solaires. Sources : <strong>SIRENE/INSEE</strong> (adresses locales) +{' '}
+          <strong>Google Solar API</strong> (mesure de toiture). Les entreprises déjà dans
+          le registre ODRÉ (Enedis) sont <strong>automatiquement exclues</strong>.
+        </p>
+        <p className="text-xs mt-2" style={{ color: '#1D4ED8' }}>
+          Le scan analyse chaque adresse pour mesurer la surface de toiture, l'ensoleillement
+          et le potentiel de production. Seules les toitures ≥ {MIN_TOIT_M2} m² (capacité ≥{' '}
+          {Math.floor(MIN_TOIT_M2 / 1.95)} panneaux) sont retenues. Résultats triés par
+          économie annuelle estimée.
+        </p>
+      </div>
+
+      <div className="card mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="relative">
+            <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+            <input
+              value={codePostal}
+              onChange={(e) => setCodePostal(e.target.value.replace(/\D/g, '').slice(0, 5))}
+              onKeyDown={(e) => e.key === 'Enter' && void search()}
+              placeholder="Code postal (34170…)"
+              className="input pl-9 h-12"
+              inputMode="numeric"
+            />
+          </div>
+          <select
+            value={secteur}
+            onChange={(e) => setSecteur(e.target.value)}
+            className="input h-12"
+          >
+            <option value="">Tous secteurs (gros toits)</option>
+            {SECTIONS_SOLAR_PRIORITAIRES.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.emoji} {s.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={limit}
+            onChange={(e) => setLimit(Number(e.target.value))}
+            className="input h-12"
+          >
+            <option value={10}>10 entreprises</option>
+            <option value={15}>15 entreprises</option>
+            <option value={25}>25 entreprises</option>
+          </select>
+        </div>
+        <div className="flex justify-end mt-3">
+          <Button onClick={search} loading={searching || scanning}>
+            {!searching && !scanning && <Zap className="w-4 h-4" />}
+            {searching
+              ? 'Recherche SIRENE…'
+              : scanning
+                ? `Analyse ${progress.done}/${progress.total}`
+                : 'Analyser les toitures'}
+          </Button>
+        </div>
+        <p className="text-xs text-text-muted mt-3">
+          ⚡ Sources : SIRENE/INSEE + Google Solar API. Coût estimé : ~{formatEuros(limit * 0.05)} pour{' '}
+          {limit} analyses. Le scan démarre <strong>automatiquement</strong> après la recherche.
+        </p>
+      </div>
+
+      {error && <ErrorBanner>{error}</ErrorBanner>}
+
+      {addresses.length > 0 && (
+        <>
+          <div className="card mb-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h3 className="font-display text-lg font-bold">
+                  {allDone
+                    ? `${qualifiedDoneCount} toiture${qualifiedDoneCount !== 1 ? 's' : ''} ≥ ${MIN_TOIT_M2} m² sans panneaux`
+                    : `Analyse en cours : ${progress.done}/${progress.total}`}
+                </h3>
+                <p className="text-sm text-text-muted">
+                  {equipeesCount > 0 && (
+                    <span>
+                      {equipeesCount} déjà équipée{equipeesCount > 1 ? 's' : ''} exclue{equipeesCount > 1 ? 's' : ''} (→ onglet Maintenance)
+                      {tropPetitCount > 0 ? ' · ' : ''}
+                    </span>
+                  )}
+                  {tropPetitCount > 0 && (
+                    <span>
+                      {tropPetitCount} toiture{tropPetitCount > 1 ? 's' : ''} trop petite{tropPetitCount > 1 ? 's' : ''} (&lt;{MIN_TOIT_M2} m²)
+                    </span>
+                  )}
+                  {totalDispo !== null && totalDispo > addresses.length && !scanning && (
+                    <span>
+                      {' · '}{totalDispo} entreprises disponibles — augmente la limite si besoin
+                    </span>
+                  )}
+                </p>
+              </div>
+              {scanning && <span className="spinner spinner-dark" />}
+            </div>
+            {scanning && progress.total > 0 && (
+              <div className="mt-3 h-2 rounded-full bg-background overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${(progress.done / progress.total) * 100}%`,
+                    background: 'linear-gradient(90deg, #3B82F6, #1D4ED8)',
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
+          {qualified.length > 0 && (
+            <div className="card">
+              <div className="overflow-x-auto -mx-6 px-6">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs font-semibold text-text-muted uppercase tracking-wide border-b border-border">
+                      <th className="pb-3 pr-3">#</th>
+                      <th className="pb-3 pr-4">Entreprise</th>
+                      <th className="pb-3 pr-4">Activité</th>
+                      <th className="pb-3 pr-4">Toiture</th>
+                      <th className="pb-3 pr-4">Score</th>
+                      <th className="pb-3 pr-4">Économie/an</th>
+                      <th className="pb-3">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {qualified.map(({ a, originalIdx }, displayIdx) => (
+                      <RowToiture
+                        key={a.label + originalIdx}
+                        rank={displayIdx + 1}
+                        address={a}
+                        onAdd={() => addToPipeline(a, originalIdx)}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+// ============================================================
 // Composants partagés
 // ============================================================
 
@@ -1710,6 +2118,105 @@ function RowParticulier({
       </td>
       <td className="py-3 pr-4 font-semibold">
         {fin ? formatEuros(fin.economie_annuelle) : '—'}
+      </td>
+      <td className="py-3">
+        <ActionCell address={address} onAdd={onAdd} />
+      </td>
+    </tr>
+  );
+}
+
+function RowToiture({
+  rank,
+  address,
+  onAdd,
+}: {
+  rank: number;
+  address: ScannedAddress;
+  onAdd: () => void;
+}) {
+  const fin = address.solar
+    ? calculerFinancier(
+        address.solar.production.kwc,
+        address.solar.production.production_annuelle_kwh,
+      )
+    : null;
+  const score = address.solar?.score_solaire ?? null;
+  const isTop3 = address.status === 'done' && rank <= 3;
+  const ent = address.entreprise;
+  const surface = address.solar?.toiture.surface_m2 ?? null;
+  const orientation = address.solar?.toiture.orientation_principale ?? null;
+
+  return (
+    <tr
+      className="border-b border-border/60 last:border-0"
+      style={isTop3 ? { background: '#EFF6FF' } : undefined}
+    >
+      <td className="py-3 pr-3 align-top">
+        <div
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold"
+          style={{
+            background: isTop3 ? '#2563EB' : '#F3F4F6',
+            color: isTop3 ? '#fff' : '#6B7280',
+          }}
+        >
+          {rank}
+        </div>
+      </td>
+      <td className="py-3 pr-4 max-w-xs">
+        <div className="flex items-center gap-3">
+          <Thumbnail
+            lat={address.lat}
+            lng={address.lng}
+            href={`https://www.google.com/maps/@${address.lat},${address.lng},19z/data=!3m1!1e3`}
+          />
+          <div className="min-w-0">
+            <div className="font-semibold truncate">{ent?.nom ?? '—'}</div>
+            <div className="text-xs text-text-muted truncate">{address.label}</div>
+            {ent?.siren && (
+              <div className="text-[10px] text-text-muted mt-0.5">
+                SIREN {ent.siren} · {ent.categorie}
+              </div>
+            )}
+          </div>
+        </div>
+      </td>
+      <td className="py-3 pr-4">
+        <div className="text-xs">
+          {ent ? SECTION_LABELS[ent.section] ?? ent.section : '—'}
+        </div>
+        <div className="text-[10px] text-text-muted">{ent?.naf}</div>
+      </td>
+      <td className="py-3 pr-4">
+        {address.status === 'loading' ? (
+          <span className="inline-flex items-center gap-1.5 text-text-muted text-xs">
+            <span className="spinner spinner-dark" /> analyse…
+          </span>
+        ) : address.status === 'pending' ? (
+          <span className="text-text-muted text-xs">en attente</span>
+        ) : surface !== null ? (
+          <div>
+            <span
+              className="font-display font-bold"
+              style={{
+                color: surface >= 200 ? '#0D7C66' : surface >= 90 ? '#1D4ED8' : '#9CA3AF',
+              }}
+            >
+              {Math.round(surface)} m²
+            </span>
+            {orientation && (
+              <div className="text-[10px] text-text-muted">{orientation}</div>
+            )}
+          </div>
+        ) : (
+          <span className="text-text-muted text-xs">—</span>
+        )}
+      </td>
+      <td className="py-3 pr-4">
+        <ScoreCell status={address.status} score={score} />
+      </td>
+      <td className="py-3 pr-4 font-semibold">
+        {fin ? formatEuros(fin.economie_annuelle) : address.status === 'loading' ? '…' : '—'}
       </td>
       <td className="py-3">
         <ActionCell address={address} onAdd={onAdd} />
