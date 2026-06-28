@@ -842,6 +842,424 @@ interface InstallationExistante {
 }
 
 function ScannerEquipes() {
+  const [source, setSource] = useState<'detection' | 'registre'>('detection');
+  return (
+    <>
+      <div className="flex gap-2 mb-6 flex-wrap">
+        <SourceTab
+          active={source === 'detection'}
+          onClick={() => setSource('detection')}
+          title="Détection Google"
+          subtitle="Max de leads, panneaux vus par satellite"
+        />
+        <SourceTab
+          active={source === 'registre'}
+          onClick={() => setSource('registre')}
+          title="Registre ODRÉ"
+          subtitle="Puissance & date d'installation connues"
+        />
+      </div>
+      {source === 'detection' ? <ScannerEquipesDetection /> : <ScannerEquipesRegistre />}
+    </>
+  );
+}
+
+function SourceTab({
+  active,
+  onClick,
+  title,
+  subtitle,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left px-4 py-2.5 rounded-xl transition-all"
+      style={{
+        background: active ? '#0D7C66' : '#F3F4F6',
+        color: active ? '#fff' : '#374151',
+        border: `1.5px solid ${active ? '#0D7C66' : '#E5E7EB'}`,
+      }}
+    >
+      <div className="text-sm font-bold">{title}</div>
+      <div className="text-[11px]" style={{ color: active ? '#A7F3D0' : '#9CA3AF' }}>
+        {subtitle}
+      </div>
+    </button>
+  );
+}
+
+// ============================================================
+// Mode DÉJÀ ÉQUIPÉS — détection (SIRENE → Google DETECTED_ARRAYS)
+// On part des entreprises d'une zone et on garde celles où Google
+// voit des panneaux sur le toit. Recall maximal + preuve visuelle.
+// ============================================================
+
+function ScannerEquipesDetection() {
+  const [dept, setDept] = useState('30');
+  const [commune, setCommune] = useState('');
+  const [secteur, setSecteur] = useState('');
+  const [limit, setLimit] = useState(25);
+  const [addresses, setAddresses] = useState<ScannedAddress[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [error, setError] = useState<string | null>(null);
+  const [totalDispo, setTotalDispo] = useState<number | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('scanner_equipes_detection_v1');
+      if (!saved) return;
+      const d = JSON.parse(saved) as {
+        addresses: ScannedAddress[];
+        dept: string;
+        commune: string;
+        secteur: string;
+        limit: number;
+        totalDispo: number | null;
+      };
+      setAddresses(d.addresses ?? []);
+      setDept(d.dept ?? '30');
+      setCommune(d.commune ?? '');
+      setSecteur(d.secteur ?? '');
+      setLimit(d.limit ?? 25);
+      setTotalDispo(d.totalDispo ?? null);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (addresses.length === 0) return;
+    try {
+      sessionStorage.setItem('scanner_equipes_detection_v1', JSON.stringify({
+        addresses, dept, commune, secteur, limit, totalDispo,
+      }));
+    } catch { /* ignore */ }
+  }, [addresses, dept, commune, secteur, limit, totalDispo]);
+
+  async function search() {
+    setSearching(true);
+    setError(null);
+    setAddresses([]);
+    setProgress({ done: 0, total: 0 });
+    setTotalDispo(null);
+    try {
+      const qs = new URLSearchParams({ dept, limit: String(limit) });
+      if (commune.trim()) qs.set('commune', commune.trim());
+      if (secteur) qs.set('secteur', secteur);
+      const r = await fetch(`/api/prospection-entreprises?${qs.toString()}`);
+      const json = (await r.json()) as
+        | { entreprises: Array<ScannedAddress & { entreprise: EntrepriseMeta }>; count: number; total: number }
+        | { error: string };
+      if (!r.ok || !('entreprises' in json)) {
+        setError('error' in json ? json.error : 'Erreur recherche');
+        return;
+      }
+      // On écarte d'emblée les opérateurs du solaire (installateurs, SPV…)
+      const liste = json.entreprises
+        .filter((e) => !estOperateurSolaire(e.entreprise.nom, e.entreprise.naf))
+        .map((e) => ({ ...e, status: 'pending' as const }));
+      if (liste.length === 0) {
+        setError('Aucune entreprise exploitable dans cette zone.');
+        return;
+      }
+      setAddresses(liste);
+      setTotalDispo(json.total);
+      void scanAll(liste);
+    } catch {
+      setError('Recherche entreprises impossible.');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function scanAll(liste: ScannedAddress[]) {
+    setScanning(true);
+    setProgress({ done: 0, total: liste.length });
+    let cursor = 0;
+    let done = 0;
+    async function worker(): Promise<void> {
+      while (cursor < liste.length) {
+        const i = cursor++;
+        const target = liste[i];
+        if (!target) continue;
+        setAddresses((all) => {
+          const copy = [...all];
+          if (copy[i]) copy[i] = { ...copy[i]!, status: 'loading' };
+          return copy;
+        });
+        try {
+          const r = await fetch(`/api/solar?address=${encodeURIComponent(target.label)}`);
+          if (!r.ok) throw new Error();
+          const solar = (await r.json()) as SolarApiResponse;
+          setAddresses((all) => {
+            const copy = [...all];
+            if (copy[i]) copy[i] = { ...copy[i]!, status: 'done', solar };
+            return copy;
+          });
+        } catch {
+          setAddresses((all) => {
+            const copy = [...all];
+            if (copy[i]) copy[i] = { ...copy[i]!, status: 'error' };
+            return copy;
+          });
+        }
+        done++;
+        setProgress({ done, total: liste.length });
+      }
+    }
+    await Promise.all(Array.from({ length: PARALLEL_WORKERS }, () => worker()));
+    setScanning(false);
+  }
+
+  async function addToPipeline(addr: ScannedAddress, originalIdx: number) {
+    if (!addr.solar) return;
+    const ent = addr.entreprise;
+    const date = addr.solar.detection_date ?? addr.solar.imagery_date;
+    const notes = `Lead MAINTENANCE — panneaux solaires CONFIRMÉS par Google${date ? ` (photo ${date})` : ''}.
+${ent ? `SIREN : ${ent.siren}
+Activité (NAF) : ${ent.naf} — ${SECTION_LABELS[ent.section] ?? ent.section}
+Effectif : ${ent.effectif_label}
+` : ''}Toiture : ${Math.round(addr.solar.toiture.surface_m2)} m² · ${addr.solar.toiture.orientation_principale}
+Opportunités : entretien, remplacement onduleurs, extension, batterie.
+Ajouté le ${new Date().toLocaleDateString('fr-FR')}.`;
+    const payload = {
+      nom: ent?.nom ?? 'Entreprise',
+      prenom: '(B2B équipé)',
+      email: null,
+      telephone: null,
+      adresse: addr.label,
+      ville: addr.city,
+      code_postal: addr.postcode,
+      latitude: addr.lat,
+      longitude: addr.lng,
+      surface_toit_m2: addr.solar.toiture.surface_m2,
+      nb_panneaux_recommande: null,
+      production_annuelle_kwh: null,
+      heures_ensoleillement: addr.solar.toiture.heures_ensoleillement,
+      orientation_principale: addr.solar.toiture.orientation_principale,
+      score_solaire: addr.solar.score_solaire,
+      qualite_imagerie: addr.solar.qualite,
+      panneaux_detectes: addr.solar.panneaux_detectes,
+      date_photo_satellite: date,
+      puissance_kwc: null,
+      cout_installation_ttc: null,
+      aides_totales: null,
+      reste_a_charge: null,
+      economie_annuelle: null,
+      temps_retour_ans: null,
+      co2_evite_kg_an: null,
+      statut: 'nouveau' as const,
+      notes,
+    };
+    try {
+      const r = await fetch('/api/prospects', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) throw new Error('post failed');
+      const j = (await r.json()) as { prospect: Prospect; demo?: boolean };
+      if (j.demo) addLocalProspect(j.prospect);
+      setAddresses((all) => {
+        const copy = [...all];
+        if (copy[originalIdx]) copy[originalIdx] = { ...copy[originalIdx]!, prospect_id: j.prospect.id };
+        return copy;
+      });
+    } catch {
+      window.alert('Ajout au pipeline impossible. Vérifie ta connexion et réessaie.');
+    }
+  }
+
+  const allWithIdx = addresses.map((a, originalIdx) => ({ a, originalIdx }));
+  const qualified = allWithIdx
+    .filter(({ a }) => a.solar?.panneaux_detectes === 'oui')
+    .sort(
+      (x, y) =>
+        (y.a.solar?.toiture.surface_m2 ?? 0) - (x.a.solar?.toiture.surface_m2 ?? 0),
+    );
+
+  const doneCount = addresses.filter((a) => a.status === 'done' || a.status === 'error').length;
+  const allDone = addresses.length > 0 && doneCount === addresses.length;
+  const equipesCount = qualified.length;
+
+  return (
+    <>
+      <div className="card mb-6" style={{ background: '#ECFDF5', border: '1px solid #6EE7B7' }}>
+        <p className="text-sm" style={{ color: '#065F46' }}>
+          <strong>Entreprises déjà équipées — détection satellite.</strong> On
+          scanne les entreprises de la zone (SIRENE) et on garde uniquement
+          celles où <strong>Google voit des panneaux sur le toit</strong>. Bien
+          plus de leads que le registre, et chacun est <strong>confirmé visuellement</strong>.
+        </p>
+        <p className="text-xs mt-2" style={{ color: '#047857' }}>
+          Idéal pour la <strong>maintenance, le remplacement d'onduleurs,
+          l'extension ou l'ajout de batteries</strong>. Les installateurs et
+          opérateurs du solaire sont exclus automatiquement.
+        </p>
+      </div>
+
+      <div className="card mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <select value={dept} onChange={(e) => setDept(e.target.value)} className="input h-12">
+            <option value="30">Gard (30)</option>
+            <option value="34">Hérault (34)</option>
+          </select>
+          <div className="relative">
+            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+            <input
+              value={commune}
+              onChange={(e) => setCommune(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void search()}
+              placeholder="Commune (ex : Nîmes)"
+              className="input pl-9 h-12"
+            />
+          </div>
+          <select value={secteur} onChange={(e) => setSecteur(e.target.value)} className="input h-12">
+            <option value="">Tous secteurs</option>
+            {SECTIONS_SOLAR_PRIORITAIRES.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.emoji} {s.label}
+              </option>
+            ))}
+          </select>
+          <select value={limit} onChange={(e) => setLimit(Number(e.target.value))} className="input h-12">
+            <option value={15}>Scanner 15 entreprises</option>
+            <option value={25}>Scanner 25 entreprises</option>
+          </select>
+        </div>
+        <div className="flex justify-end mt-3">
+          <Button onClick={search} loading={searching || scanning}>
+            {!searching && !scanning && <Sun className="w-4 h-4" />}
+            {searching
+              ? 'Recherche SIRENE…'
+              : scanning
+                ? `Analyse ${progress.done}/${progress.total}`
+                : 'Trouver les entreprises équipées'}
+          </Button>
+        </div>
+        <p className="text-xs text-text-muted mt-3">
+          ☀️ On analyse chaque toiture via Google Solar. Coût estimé : ~{formatEuros(limit * 0.05)}.
+          Astuce : cible un secteur (industrie, commerce, logistique) pour de plus gros toits.
+        </p>
+      </div>
+
+      {error && <ErrorBanner>{error}</ErrorBanner>}
+
+      {addresses.length > 0 && (
+        <>
+          <div className="card mb-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h3 className="font-display text-lg font-bold">
+                  {allDone
+                    ? `${equipesCount} entreprise${equipesCount !== 1 ? 's' : ''} équipée${equipesCount !== 1 ? 's' : ''} confirmée${equipesCount !== 1 ? 's' : ''}`
+                    : `Analyse en cours : ${progress.done}/${progress.total}`}
+                </h3>
+                <p className="text-sm text-text-muted">
+                  {allDone
+                    ? `Sur ${addresses.length} entreprises scannées · panneaux vus par Google`
+                    : 'Google vérifie chaque toiture…'}
+                  {totalDispo !== null && totalDispo > addresses.length && allDone && (
+                    <span> · {totalDispo} dispo au total — relance pour en scanner d'autres</span>
+                  )}
+                </p>
+              </div>
+              {scanning && <span className="spinner spinner-dark" />}
+            </div>
+            {scanning && progress.total > 0 && (
+              <div className="mt-3 h-2 rounded-full bg-background overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${(progress.done / progress.total) * 100}%`, background: 'linear-gradient(90deg, #10B981, #0D7C66)' }}
+                />
+              </div>
+            )}
+          </div>
+
+          {allDone && equipesCount === 0 ? (
+            <div className="card text-center py-10 text-text-muted">
+              Aucun panneau détecté sur les {addresses.length} entreprises scannées.
+              Relance avec une autre commune ou un autre secteur, ou augmente le nombre d'entreprises.
+            </div>
+          ) : qualified.length > 0 ? (
+            <div className="card">
+              <div className="overflow-x-auto -mx-6 px-6">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs font-semibold text-text-muted uppercase tracking-wide border-b border-border">
+                      <th className="pb-3 pr-3">#</th>
+                      <th className="pb-3 pr-4">Entreprise</th>
+                      <th className="pb-3 pr-4">Activité</th>
+                      <th className="pb-3 pr-4">Toiture</th>
+                      <th className="pb-3 pr-4">Photo</th>
+                      <th className="pb-3">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {qualified.map(({ a, originalIdx }, displayIdx) => {
+                      const ent = a.entreprise;
+                      const date = a.solar?.detection_date ?? a.solar?.imagery_date;
+                      return (
+                        <tr key={a.label + originalIdx} className="border-b border-border/60 last:border-0" style={displayIdx < 3 ? { background: '#F0FDF4' } : undefined}>
+                          <td className="py-3 pr-3 align-top">
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold" style={{ background: displayIdx < 3 ? '#0D7C66' : '#F3F4F6', color: displayIdx < 3 ? '#fff' : '#6B7280' }}>
+                              {displayIdx + 1}
+                            </div>
+                          </td>
+                          <td className="py-3 pr-4 max-w-xs">
+                            <div className="flex items-center gap-3">
+                              <Thumbnail lat={a.lat} lng={a.lng} href={`https://www.google.com/maps/@${a.lat},${a.lng},19z/data=!3m1!1e3`} />
+                              <div className="min-w-0">
+                                <div className="font-semibold truncate">{ent?.nom ?? '—'}</div>
+                                <div className="text-xs text-text-muted truncate">{a.label}</div>
+                                {ent?.siren && (
+                                  <div className="text-[10px] text-text-muted mt-0.5">SIREN {ent.siren}</div>
+                                )}
+                                <div><DetectionBadge solar={a.solar} /></div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 pr-4">
+                            <div className="text-xs">{ent ? SECTION_LABELS[ent.section] ?? ent.section : '—'}</div>
+                            <div className="text-[10px] text-text-muted">{ent?.effectif_label}</div>
+                          </td>
+                          <td className="py-3 pr-4">
+                            {a.solar ? (
+                              <div>
+                                <span className="font-display font-bold" style={{ color: a.solar.toiture.surface_m2 >= 200 ? '#0D7C66' : '#1F2937' }}>
+                                  {Math.round(a.solar.toiture.surface_m2)} m²
+                                </span>
+                                <div className="text-[10px] text-text-muted">{a.solar.toiture.orientation_principale}</div>
+                              </div>
+                            ) : '—'}
+                          </td>
+                          <td className="py-3 pr-4 text-xs text-text-muted">
+                            {date ?? '—'}
+                          </td>
+                          <td className="py-3">
+                            <ActionCell address={a} onAdd={() => addToPipeline(a, originalIdx)} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
+    </>
+  );
+}
+
+function ScannerEquipesRegistre() {
   const [dept, setDept] = useState('30');
   const [commune, setCommune] = useState('');
   const [tri, setTri] = useState('anciennes');
@@ -982,9 +1400,6 @@ function ScannerEquipes() {
     const ent = item.entreprise;
     const age = item.annee ? new Date().getFullYear() - item.annee : null;
     const solar = solarData[key];
-    const fin = solar
-      ? calculerFinancier(solar.production.kwc, solar.production.production_annuelle_kwh)
-      : null;
     const notes = `Lead MAINTENANCE / EXTENSION — installation solaire existante.
 Installation : ${item.nom_installation}
 Puissance installée : ${Math.round(item.puissance_kw)} kW · Mise en service : ${item.date_mise_en_service ?? 'inconnue'}${age !== null ? ` (${age} ans)` : ''}
@@ -1003,21 +1418,23 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
       latitude: ent?.lat ?? null,
       longitude: ent?.lng ?? null,
       surface_toit_m2: solar?.toiture.surface_m2 ?? null,
-      nb_panneaux_recommande: solar?.production.nb_panneaux ?? null,
-      production_annuelle_kwh: solar?.production.production_annuelle_kwh ?? null,
+      // Lead déjà équipé : on ne stocke PAS de reco résidentielle (panneaux,
+      // production, devis) qui n'a aucun sens sur une installation existante.
+      nb_panneaux_recommande: null,
+      production_annuelle_kwh: null,
       heures_ensoleillement: solar?.toiture.heures_ensoleillement ?? null,
       orientation_principale: solar?.toiture.orientation_principale ?? null,
       score_solaire: solar?.score_solaire ?? null,
       qualite_imagerie: solar?.qualite ?? null,
       panneaux_detectes: solar?.panneaux_detectes ?? null,
       date_photo_satellite: solar?.detection_date ?? solar?.imagery_date ?? null,
-      puissance_kwc: Math.round(item.puissance_kw),
-      cout_installation_ttc: fin?.cout_installation_ttc ?? null,
-      aides_totales: fin?.aides_totales ?? null,
-      reste_a_charge: fin?.reste_a_charge ?? null,
-      economie_annuelle: fin?.economie_annuelle ?? null,
-      temps_retour_ans: fin?.temps_retour_ans ?? null,
-      co2_evite_kg_an: fin?.co2_evite_kg_an ?? null,
+      puissance_kwc: Math.round(item.puissance_kw), // puissance RÉELLE du registre ODRÉ
+      cout_installation_ttc: null,
+      aides_totales: null,
+      reste_a_charge: null,
+      economie_annuelle: null,
+      temps_retour_ans: null,
+      co2_evite_kg_an: null,
       statut: 'nouveau' as const,
       notes,
     };
