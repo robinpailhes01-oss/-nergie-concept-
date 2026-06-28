@@ -47,6 +47,8 @@ create table if not exists public.prospects (
   orientation_principale   text,
   score_solaire            integer,
   qualite_imagerie         text,
+  panneaux_detectes        text,
+  date_photo_satellite     text,
 
   -- Financier
   puissance_kwc        double precision,

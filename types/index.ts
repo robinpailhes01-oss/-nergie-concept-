@@ -11,6 +11,12 @@ export type ProspectStatut =
 
 export type QualiteImagerie = 'HIGH' | 'MEDIUM' | 'LOW';
 
+// Détection de panneaux solaires existants sur le toit (Google DETECTED_ARRAYS)
+//   oui     = panneaux confirmés sur l'imagerie satellite
+//   non     = aucun panneau détecté
+//   inconnu = donnée indisponible pour ce bâtiment
+export type DetectionPanneaux = 'oui' | 'non' | 'inconnu';
+
 export type Orientation =
   | 'Nord'
   | 'Nord-Est'
@@ -58,6 +64,9 @@ export interface SolarApiResponse {
   score_solaire: number;
   photo_satellite_url: string | null;
   imagery_date: string | null;
+  // Détection IA des panneaux existants (Google DETECTED_ARRAYS)
+  panneaux_detectes: DetectionPanneaux;
+  detection_date: string | null;
 }
 
 // ============================================================
@@ -140,6 +149,10 @@ export interface Prospect {
   economie_annuelle: number | null;
   temps_retour_ans: number | null;
   co2_evite_kg_an: number | null;
+
+  // Détection panneaux existants + date de la photo satellite (Google Solar)
+  panneaux_detectes?: DetectionPanneaux | null;
+  date_photo_satellite?: string | null;
 
   statut: ProspectStatut;
   notes: string | null;

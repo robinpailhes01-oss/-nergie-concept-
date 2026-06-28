@@ -398,6 +398,8 @@ Ajoutée le ${new Date().toLocaleDateString('fr-FR')}.`
       orientation_principale: addr.solar.toiture.orientation_principale,
       score_solaire: addr.solar.score_solaire,
       qualite_imagerie: addr.solar.qualite,
+      panneaux_detectes: addr.solar.panneaux_detectes,
+      date_photo_satellite: addr.solar.detection_date ?? addr.solar.imagery_date,
       puissance_kwc: addr.solar.production.kwc,
       cout_installation_ttc: fin.cout_installation_ttc,
       aides_totales: fin.aides_totales,
@@ -683,6 +685,8 @@ function ScannerParticuliers() {
       orientation_principale: addr.solar.toiture.orientation_principale,
       score_solaire: addr.solar.score_solaire,
       qualite_imagerie: addr.solar.qualite,
+      panneaux_detectes: addr.solar.panneaux_detectes,
+      date_photo_satellite: addr.solar.detection_date ?? addr.solar.imagery_date,
       puissance_kwc: addr.solar.production.kwc,
       cout_installation_ttc: fin.cout_installation_ttc,
       aides_totales: fin.aides_totales,
@@ -1005,6 +1009,8 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
       orientation_principale: solar?.toiture.orientation_principale ?? null,
       score_solaire: solar?.score_solaire ?? null,
       qualite_imagerie: solar?.qualite ?? null,
+      panneaux_detectes: solar?.panneaux_detectes ?? null,
+      date_photo_satellite: solar?.detection_date ?? solar?.imagery_date ?? null,
       puissance_kwc: Math.round(item.puissance_kw),
       cout_installation_ttc: fin?.cout_installation_ttc ?? null,
       aides_totales: fin?.aides_totales ?? null,
@@ -1036,19 +1042,23 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
     const ent = item.entreprise;
     if (!ent) return 0;
     let score = 0;
-    if (ent.adresse) score += 30;
+    if (ent.adresse) score += 25;
     if (nafEstFiable(ent.naf) && !estOperateurSolaire(ent.nom, ent.naf)) score += 20;
     if (nomsCorrespondent(ent.nom, item.nom_installation)) score += 20;
     const key = item.nom_installation + item.commune;
-    if (solarStatus[key] === 'ok') {
-      score += 20;
-      const d = solarDates[key];
-      if (d) {
-        const annee = parseInt(d.substring(0, 4), 10);
-        if (!Number.isNaN(annee) && new Date().getFullYear() - annee <= 3) {
-          score += 10;
-        }
-      }
+    const solar = solarData[key];
+    if (solar?.panneaux_detectes === 'oui') {
+      // Google CONFIRME visuellement les panneaux sur le toit = preuve forte
+      score += 25;
+    } else if (solarStatus[key] === 'ok') {
+      // Bâtiment trouvé mais détection visuelle non concluante
+      score += 10;
+    }
+    // Bonus photo récente (<3 ans) — on extrait l'année du libellé "mois aaaa"
+    const d = solar?.detection_date ?? solarDates[key];
+    const annee = d ? Number(d.match(/\d{4}/)?.[0]) : NaN;
+    if (!Number.isNaN(annee) && new Date().getFullYear() - annee <= 3) {
+      score += 10;
     }
     return Math.min(score, 100);
   }
@@ -1078,8 +1088,8 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
         </p>
         <p className="text-xs mt-1.5" style={{ color: '#065F46', background: '#A7F3D0', borderRadius: 6, padding: '6px 8px' }}>
           💡 <strong>Score de fiabilité 0–100</strong> calculé automatiquement :
-          adresse SIRENE locale (+30) · NAF propriétaire-occupant (+20) ·
-          nom correspond (+20) · Google Solar confirme le bâtiment (+20) ·
+          adresse SIRENE locale (+25) · NAF propriétaire-occupant (+20) ·
+          nom correspond (+20) · <strong>Google détecte les panneaux sur le toit (+25)</strong> ·
           photo récente &lt;3 ans (+10). Les 10 premiers résultats sont
           vérifiés <strong>automatiquement</strong> via Google Solar en arrière-plan.
           Triés par score décroissant — les <strong>90+</strong> sont prêts à appeler.
@@ -1320,16 +1330,40 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
                                     <span className="spinner spinner-dark" /> Vérification…
                                   </span>
                                 ) : solarStatus[key] === 'ok' ? (
-                                  <div
-                                    className="text-[11px] font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded"
-                                    style={{ background: '#D1FAE5', color: '#065F46', border: '1px solid #34D399' }}
-                                    title="Google Solar confirme ce bâtiment dans sa base de données"
-                                  >
-                                    ✓ Google Solar OK
-                                    {solarDates[key] && (
-                                      <span className="font-normal opacity-80">· photo {solarDates[key]}</span>
-                                    )}
-                                  </div>
+                                  solarData[key]?.panneaux_detectes === 'oui' ? (
+                                    <div
+                                      className="text-[11px] font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded"
+                                      style={{ background: '#D1FAE5', color: '#065F46', border: '1px solid #34D399' }}
+                                      title="Google détecte des panneaux solaires sur cette toiture — installation confirmée visuellement"
+                                    >
+                                      🟢 Panneaux confirmés par Google
+                                      {(solarData[key]?.detection_date ?? solarDates[key]) && (
+                                        <span className="font-normal opacity-80">· 📷 {solarData[key]?.detection_date ?? solarDates[key]}</span>
+                                      )}
+                                    </div>
+                                  ) : solarData[key]?.panneaux_detectes === 'non' ? (
+                                    <div
+                                      className="text-[11px] font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded"
+                                      style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}
+                                      title="Le registre dit équipée mais Google ne voit pas de panneaux (photo ancienne, ombrage, ou désinstallation) — à vérifier"
+                                    >
+                                      ⚠️ Aucun panneau vu par Google
+                                      {(solarData[key]?.detection_date ?? solarDates[key]) && (
+                                        <span className="font-normal opacity-80">· 📷 {solarData[key]?.detection_date ?? solarDates[key]}</span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div
+                                      className="text-[11px] font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded"
+                                      style={{ background: '#D1FAE5', color: '#065F46', border: '1px solid #34D399' }}
+                                      title="Google Solar confirme ce bâtiment dans sa base de données"
+                                    >
+                                      ✓ Google Solar OK
+                                      {solarDates[key] && (
+                                        <span className="font-normal opacity-80">· 📷 {solarDates[key]}</span>
+                                      )}
+                                    </div>
+                                  )
                                 ) : solarStatus[key] === 'demo' ? (
                                   <div
                                     className="text-[11px] inline-flex items-center gap-1 px-2 py-0.5 rounded"
@@ -1588,6 +1622,8 @@ Ajouté le ${new Date().toLocaleDateString('fr-FR')}.`
       orientation_principale: addr.solar.toiture.orientation_principale,
       score_solaire: addr.solar.score_solaire,
       qualite_imagerie: addr.solar.qualite,
+      panneaux_detectes: addr.solar.panneaux_detectes,
+      date_photo_satellite: addr.solar.detection_date ?? addr.solar.imagery_date,
       puissance_kwc: addr.solar.production.kwc,
       cout_installation_ttc: fin.cout_installation_ttc,
       aides_totales: fin.aides_totales,
@@ -1621,6 +1657,8 @@ Ajouté le ${new Date().toLocaleDateString('fr-FR')}.`
 
   const qualified = allWithIdx
     .filter(({ a }) => !a.deja_equipee)
+    // Google a détecté des panneaux → déjà équipée, exclue de "à démarcher"
+    .filter(({ a }) => a.solar?.panneaux_detectes !== 'oui')
     .filter(({ a }) => {
       if (a.status === 'error') return false;
       if (a.status === 'done' && a.solar && !a.solar.demo) {
@@ -1639,6 +1677,9 @@ Ajouté le ${new Date().toLocaleDateString('fr-FR')}.`
   const doneCount = addresses.filter((a) => a.status === 'done' || a.status === 'error').length;
   const allDone = addresses.length > 0 && doneCount === addresses.length;
   const equipeesCount = addresses.filter((a) => a.deja_equipee).length;
+  const detecteesCount = addresses.filter(
+    (a) => !a.deja_equipee && a.solar?.panneaux_detectes === 'oui',
+  ).length;
   const tropPetitCount = addresses.filter(
     (a) => a.status === 'done' && a.solar && !a.solar.demo && a.solar.toiture.surface_m2 < MIN_TOIT_M2 && !a.deja_equipee,
   ).length;
@@ -1726,7 +1767,13 @@ Ajouté le ${new Date().toLocaleDateString('fr-FR')}.`
                 <p className="text-sm text-text-muted">
                   {equipeesCount > 0 && (
                     <span>
-                      {equipeesCount} déjà équipée{equipeesCount > 1 ? 's' : ''} exclue{equipeesCount > 1 ? 's' : ''} (→ onglet Maintenance)
+                      {equipeesCount} déjà équipée{equipeesCount > 1 ? 's' : ''} (registre) exclue{equipeesCount > 1 ? 's' : ''}
+                      {(detecteesCount > 0 || tropPetitCount > 0) ? ' · ' : ''}
+                    </span>
+                  )}
+                  {detecteesCount > 0 && (
+                    <span>
+                      🟢 {detecteesCount} avec panneaux détectés par Google exclue{detecteesCount > 1 ? 's' : ''}
                       {tropPetitCount > 0 ? ' · ' : ''}
                     </span>
                   )}
@@ -1913,6 +1960,43 @@ function Thumbnail({
   return img;
 }
 
+function DetectionBadge({ solar }: { solar?: SolarApiResponse }) {
+  if (!solar) return null;
+  const date = solar.detection_date ?? solar.imagery_date;
+  const dateLabel = date ? ` · 📷 ${date}` : '';
+  if (solar.panneaux_detectes === 'oui') {
+    return (
+      <div
+        className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold"
+        style={{ background: '#D1FAE5', color: '#065F46', border: '1px solid #6EE7B7' }}
+        title="Google détecte des panneaux solaires sur cette toiture"
+      >
+        🟢 Panneaux confirmés{dateLabel}
+      </div>
+    );
+  }
+  if (solar.panneaux_detectes === 'non') {
+    return (
+      <div
+        className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold"
+        style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}
+        title="Aucun panneau détecté — toiture libre"
+      >
+        ⚪ Aucun panneau{dateLabel}
+      </div>
+    );
+  }
+  return (
+    <div
+      className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
+      style={{ background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}
+      title="Détection de panneaux indisponible pour ce bâtiment"
+    >
+      Détection indispo{dateLabel}
+    </div>
+  );
+}
+
 function ScoreCell({ status, score }: { status: ScannedAddress['status']; score: number | null }) {
   const scoreColor =
     score === null
@@ -2047,6 +2131,7 @@ function RowEntreprise({
                   : ''})
               </div>
             )}
+            <div><DetectionBadge solar={address.solar} /></div>
           </div>
         </div>
       </td>
@@ -2116,6 +2201,7 @@ function RowParticulier({
             <div className="text-xs text-text-muted">
               {address.postcode} · {address.city}
             </div>
+            <DetectionBadge solar={address.solar} />
           </div>
         </div>
       </td>
@@ -2192,6 +2278,7 @@ function RowToiture({
                 SIREN {ent.siren} · {ent.categorie}
               </div>
             )}
+            <div><DetectionBadge solar={address.solar} /></div>
           </div>
         </div>
       </td>

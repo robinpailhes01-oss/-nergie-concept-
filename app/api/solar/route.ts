@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import type {
+  DetectionPanneaux,
   Orientation,
   ProductionScenario,
   QualiteImagerie,
@@ -44,6 +45,8 @@ const DEMO_FIXTURES: DemoFixture[] = [
       surface: 62,
       heures: 2720,
       orientation: 'Sud-Ouest',
+      detection: 'oui',
+      detectionDate: 'mai 2024',
     }),
   },
   {
@@ -57,6 +60,8 @@ const DEMO_FIXTURES: DemoFixture[] = [
       surface: 95,
       heures: 2640,
       orientation: 'Sud',
+      detection: 'non',
+      detectionDate: 'mars 2024',
     }),
   },
   {
@@ -70,6 +75,8 @@ const DEMO_FIXTURES: DemoFixture[] = [
       surface: 88,
       heures: 2580,
       orientation: 'Sud',
+      detection: 'non',
+      detectionDate: 'juin 2024',
     }),
   },
   {
@@ -83,6 +90,8 @@ const DEMO_FIXTURES: DemoFixture[] = [
       surface: 54,
       heures: 2700,
       orientation: 'Sud-Est',
+      detection: 'non',
+      detectionDate: 'avril 2024',
     }),
   },
 ];
@@ -96,6 +105,8 @@ const DEFAULT_DEMO = buildDemo({
   surface: 78.5,
   heures: 2680,
   orientation: 'Sud',
+  detection: 'non',
+  detectionDate: 'mars 2024',
 });
 
 interface DemoInput {
@@ -107,6 +118,8 @@ interface DemoInput {
   surface: number;
   heures: number;
   orientation: Orientation;
+  detection?: DetectionPanneaux;
+  detectionDate?: string;
 }
 
 function buildDemo(input: DemoInput): Omit<SolarApiResponse, 'demo'> {
@@ -157,7 +170,9 @@ function buildDemo(input: DemoInput): Omit<SolarApiResponse, 'demo'> {
       qualite,
     ),
     photo_satellite_url: getStaticSatelliteUrl(input.lat, input.lng),
-    imagery_date: null,
+    imagery_date: input.detectionDate ?? null,
+    panneaux_detectes: input.detection ?? 'inconnu',
+    detection_date: input.detectionDate ?? null,
   };
 }
 
@@ -208,6 +223,10 @@ interface RoofSegment {
 interface BuildingInsightsResponse {
   imageryQuality?: 'HIGH' | 'MEDIUM' | 'LOW';
   imageryDate?: { year?: number; month?: number; day?: number };
+  detectedArrays?: {
+    detectionStatus?: string;
+    latestCaptureDate?: { year?: number; month?: number; day?: number };
+  };
   solarPotential?: {
     maxArrayPanelsCount?: number;
     maxArrayAreaMeters2?: number;
@@ -219,6 +238,17 @@ interface BuildingInsightsResponse {
       yearlyEnergyDcKwh: number;
     }>;
   };
+}
+
+function mapDetectionStatus(status?: string): DetectionPanneaux {
+  switch (status) {
+    case 'DETECTION_STATUS_ARRAYS_DETECTED':
+      return 'oui';
+    case 'DETECTION_STATUS_NO_ARRAYS_DETECTED':
+      return 'non';
+    default:
+      return 'inconnu';
+  }
 }
 
 function azimuthToOrientation(az: number): Orientation {
@@ -270,6 +300,8 @@ async function buildingInsights(
   url.searchParams.set('location.latitude', lat.toString());
   url.searchParams.set('location.longitude', lng.toString());
   url.searchParams.set('requiredQuality', 'LOW');
+  // Détection IA des panneaux solaires déjà installés sur le toit
+  url.searchParams.append('additionalInsights', 'DETECTED_ARRAYS');
   url.searchParams.set('key', GOOGLE_KEY as string);
   const r = await fetch(url.toString(), { cache: 'no-store' });
   if (!r.ok) return null;
@@ -401,6 +433,12 @@ export async function GET(req: Request) {
       score_solaire: calculerScoreSolaire(heures, orientation, surface, qualite),
       photo_satellite_url: getStaticSatelliteUrl(geo.lat, geo.lng),
       imagery_date: formatImageryDate(insights.imageryDate),
+      panneaux_detectes: mapDetectionStatus(
+        insights.detectedArrays?.detectionStatus,
+      ),
+      detection_date:
+        formatImageryDate(insights.detectedArrays?.latestCaptureDate) ??
+        formatImageryDate(insights.imageryDate),
     };
 
     return NextResponse.json(response);

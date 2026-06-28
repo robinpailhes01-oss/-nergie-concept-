@@ -18,6 +18,7 @@ import {
   Leaf,
   Compass,
   Clock,
+  Camera,
   Send,
 } from 'lucide-react';
 import { StatutBadge } from '@/components/ui/Badge';
@@ -318,6 +319,32 @@ function ListeBadge({ prospect }: { prospect: Prospect }) {
   );
 }
 
+function DetectionPanneauxBadge({ prospect }: { prospect: Prospect }) {
+  const d = prospect.panneaux_detectes;
+  if (d !== 'oui' && d !== 'non') return null;
+  const date = prospect.date_photo_satellite;
+  if (d === 'oui') {
+    return (
+      <div
+        className="rounded-lg px-3 py-2 text-xs font-bold flex items-center gap-2"
+        style={{ background: '#D1FAE5', color: '#065F46', border: '1px solid #6EE7B7' }}
+      >
+        🟢 Panneaux solaires détectés sur le toit
+        {date && <span className="font-normal opacity-80">(photo {date})</span>}
+      </div>
+    );
+  }
+  return (
+    <div
+      className="rounded-lg px-3 py-2 text-xs font-bold flex items-center gap-2"
+      style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}
+    >
+      ⚪ Aucun panneau détecté — toiture libre
+      {date && <span className="font-normal opacity-80">(photo {date})</span>}
+    </div>
+  );
+}
+
 function Thumbnail({
   lat,
   lng,
@@ -494,11 +521,12 @@ function ProspectModal({
                 )}
               />
               <MiniKpi
-                icon={Sun}
-                label="Qualité"
-                value={prospect.qualite_imagerie ?? '—'}
+                icon={Camera}
+                label="Photo satellite"
+                value={prospect.date_photo_satellite ?? '—'}
               />
             </div>
+            <DetectionPanneauxBadge prospect={prospect} />
           </div>
         </div>
 
