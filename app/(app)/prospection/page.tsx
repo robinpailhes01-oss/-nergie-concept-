@@ -278,6 +278,7 @@ function ScannerEntreprises() {
       setAddresses(liste);
       setTotalDispo(json.total);
       void flagDejaEquipees(liste);
+      void scan(liste);
     } catch {
       setError('Recherche entreprises impossible.');
     } finally {
@@ -316,18 +317,19 @@ function ScannerEntreprises() {
     );
   }
 
-  async function scan() {
-    if (addresses.length === 0) return;
+  async function scan(liste?: ScannedAddress[]) {
+    const targets = liste ?? addresses;
+    if (targets.length === 0) return;
     setScanning(true);
-    setProgress({ done: 0, total: addresses.length });
+    setProgress({ done: 0, total: targets.length });
 
     let cursor = 0;
     let done = 0;
 
     async function worker(): Promise<void> {
-      while (cursor < addresses.length) {
+      while (cursor < targets.length) {
         const i = cursor++;
-        const target = addresses[i];
+        const target = targets[i];
         if (!target) continue;
         setAddresses((all) => {
           const copy = [...all];
@@ -355,7 +357,7 @@ function ScannerEntreprises() {
           });
         }
         done++;
-        setProgress({ done, total: addresses.length });
+        setProgress({ done, total: targets.length });
       }
     }
     await Promise.all(
@@ -603,9 +605,9 @@ function ScannerParticuliers() {
         city: json.city,
         postcode: json.postcode,
       });
-      setAddresses(
-        json.addresses.map((a) => ({ ...a, status: 'pending' as const })),
-      );
+      const liste = json.addresses.map((a) => ({ ...a, status: 'pending' as const }));
+      setAddresses(liste);
+      void scan(liste);
     } catch {
       setError('Recherche impossible.');
     } finally {
@@ -613,16 +615,17 @@ function ScannerParticuliers() {
     }
   }
 
-  async function scan() {
-    if (addresses.length === 0) return;
+  async function scan(liste?: ScannedAddress[]) {
+    const targets = liste ?? addresses;
+    if (targets.length === 0) return;
     setScanning(true);
-    setProgress({ done: 0, total: addresses.length });
+    setProgress({ done: 0, total: targets.length });
     let cursor = 0;
     let done = 0;
     async function worker(): Promise<void> {
-      while (cursor < addresses.length) {
+      while (cursor < targets.length) {
         const i = cursor++;
-        const target = addresses[i];
+        const target = targets[i];
         if (!target) continue;
         setAddresses((all) => {
           const copy = [...all];
@@ -648,7 +651,7 @@ function ScannerParticuliers() {
           });
         }
         done++;
-        setProgress({ done, total: addresses.length });
+        setProgress({ done, total: targets.length });
       }
     }
     await Promise.all(
@@ -847,6 +850,7 @@ function ScannerEquipes() {
   const [added, setAdded] = useState<Record<string, boolean>>({});
   const [solarStatus, setSolarStatus] = useState<Record<string, 'idle' | 'loading' | 'ok' | 'error' | 'demo'>>({});
   const [solarDates, setSolarDates] = useState<Record<string, string | null>>({});
+  const [solarData, setSolarData] = useState<Record<string, SolarApiResponse>>({});
 
   // Restaurer depuis sessionStorage au montage
   useEffect(() => {
@@ -894,6 +898,7 @@ function ScannerEquipes() {
     setTotal(null);
     setSolarStatus({});
     setSolarDates({});
+    setSolarData({});
     try {
       const qs = new URLSearchParams({
         dept,
@@ -956,6 +961,7 @@ function ScannerEquipes() {
       } else {
         setSolarStatus((s) => ({ ...s, [key]: 'ok' }));
         setSolarDates((d) => ({ ...d, [key]: solar.imagery_date }));
+        setSolarData((d) => ({ ...d, [key]: solar }));
       }
     } catch {
       setSolarStatus((s) => ({ ...s, [key]: 'error' }));
@@ -966,11 +972,16 @@ function ScannerEquipes() {
     const key = item.nom_installation + item.commune;
     const ent = item.entreprise;
     const age = item.annee ? new Date().getFullYear() - item.annee : null;
+    const solar = solarData[key];
+    const fin = solar
+      ? calculerFinancier(solar.production.kwc, solar.production.production_annuelle_kwh)
+      : null;
     const notes = `Lead MAINTENANCE / EXTENSION — installation solaire existante.
 Installation : ${item.nom_installation}
-Puissance : ${Math.round(item.puissance_kw)} kW · Mise en service : ${item.date_mise_en_service ?? 'inconnue'}${age !== null ? ` (${age} ans)` : ''}
+Puissance installée : ${Math.round(item.puissance_kw)} kW · Mise en service : ${item.date_mise_en_service ?? 'inconnue'}${age !== null ? ` (${age} ans)` : ''}
 Source : registre national ODRÉ${ent ? `
-Entreprise SIRENE : ${ent.nom} (SIREN ${ent.siren}, confiance ${ent.confiance})` : ''}
+Entreprise SIRENE : ${ent.nom} (SIREN ${ent.siren}, confiance ${ent.confiance})` : ''}${solar ? `
+Google Solar : toiture ${Math.round(solar.toiture.surface_m2)} m² · ${solar.toiture.orientation_principale} · ${solar.toiture.heures_ensoleillement}h ensoleillement/an` : ''}
 Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
     const payload = {
       nom: ent?.nom ?? item.nom_installation,
@@ -982,20 +993,20 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
       code_postal: ent?.code_postal ?? null,
       latitude: ent?.lat ?? null,
       longitude: ent?.lng ?? null,
-      surface_toit_m2: null,
-      nb_panneaux_recommande: null,
-      production_annuelle_kwh: null,
-      heures_ensoleillement: null,
-      orientation_principale: null,
-      score_solaire: null,
-      qualite_imagerie: null,
+      surface_toit_m2: solar?.toiture.surface_m2 ?? null,
+      nb_panneaux_recommande: solar?.production.nb_panneaux ?? null,
+      production_annuelle_kwh: solar?.production.production_annuelle_kwh ?? null,
+      heures_ensoleillement: solar?.toiture.heures_ensoleillement ?? null,
+      orientation_principale: solar?.toiture.orientation_principale ?? null,
+      score_solaire: solar?.score_solaire ?? null,
+      qualite_imagerie: solar?.qualite ?? null,
       puissance_kwc: Math.round(item.puissance_kw),
-      cout_installation_ttc: null,
-      aides_totales: null,
-      reste_a_charge: null,
-      economie_annuelle: null,
-      temps_retour_ans: null,
-      co2_evite_kg_an: null,
+      cout_installation_ttc: fin?.cout_installation_ttc ?? null,
+      aides_totales: fin?.aides_totales ?? null,
+      reste_a_charge: fin?.reste_a_charge ?? null,
+      economie_annuelle: fin?.economie_annuelle ?? null,
+      temps_retour_ans: fin?.temps_retour_ans ?? null,
+      co2_evite_kg_an: fin?.co2_evite_kg_an ?? null,
       statut: 'nouveau' as const,
       notes,
     };
