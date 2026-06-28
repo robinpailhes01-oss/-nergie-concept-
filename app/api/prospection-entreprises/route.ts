@@ -70,6 +70,8 @@ function toNumber(v: string | number | null | undefined): number | null {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const codePostal = searchParams.get('code_postal')?.trim() ?? '';
+  const dept = searchParams.get('dept')?.trim() ?? '';
+  const commune = searchParams.get('commune')?.trim() ?? '';
   const ville = searchParams.get('ville')?.trim() ?? '';
   const taille = searchParams.get('taille')?.trim() ?? '';
   const secteur = searchParams.get('secteur')?.trim() ?? '';
@@ -78,28 +80,36 @@ export async function GET(req: Request) {
     MAX_LIMIT,
   );
 
-  if (!codePostal && !ville) {
+  if (!codePostal && !dept && !ville) {
     return NextResponse.json(
-      { error: 'Renseigne une ville ou un code postal.' },
+      { error: 'Renseigne un département (30 ou 34), un code postal ou une ville.' },
       { status: 400 },
     );
   }
 
   if (codePostal) {
-    const dept = codePostal.substring(0, 2);
-    if (!ALLOWED_DEPTS.includes(dept as (typeof ALLOWED_DEPTS)[number])) {
+    const deptFromCP = codePostal.substring(0, 2);
+    if (!ALLOWED_DEPTS.includes(deptFromCP as (typeof ALLOWED_DEPTS)[number])) {
       return NextResponse.json(
-        {
-          error: `Le code postal ${codePostal} n'est pas dans le Gard (30) ou l'Hérault (34).`,
-        },
+        { error: `Le code postal ${codePostal} n'est pas dans le Gard (30) ou l'Hérault (34).` },
         { status: 400 },
       );
     }
   }
 
+  if (dept && !ALLOWED_DEPTS.includes(dept as (typeof ALLOWED_DEPTS)[number])) {
+    return NextResponse.json(
+      { error: `Département ${dept} non pris en charge. Seuls le Gard (30) et l'Hérault (34) sont disponibles.` },
+      { status: 400 },
+    );
+  }
+
   const url = new URL('https://recherche-entreprises.api.gouv.fr/search');
   if (codePostal) {
     url.searchParams.set('code_postal', codePostal);
+  } else if (dept) {
+    url.searchParams.set('departement', dept);
+    if (commune) url.searchParams.set('q', commune);
   } else {
     url.searchParams.set('departement', '30,34');
     if (ville) url.searchParams.set('q', ville);

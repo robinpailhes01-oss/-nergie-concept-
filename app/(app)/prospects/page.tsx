@@ -38,11 +38,44 @@ const TABS: { key: ProspectStatut | 'all'; label: string }[] = [
   { key: 'perdu', label: 'Perdus' },
 ];
 
+type ListeType = 'all' | 'equipe' | 'toiture' | 'b2b' | 'particulier';
+
+const LISTE_FILTERS: {
+  key: ListeType;
+  label: string;
+  color: string;
+  bg: string;
+  border: string;
+}[] = [
+  { key: 'all', label: 'Toutes les listes', color: '#6B7280', bg: '#F3F4F6', border: '#D1D5DB' },
+  { key: 'equipe', label: '🔧 Déjà équipés', color: '#065F46', bg: '#D1FAE5', border: '#6EE7B7' },
+  { key: 'toiture', label: '⚡ À installer', color: '#1D4ED8', bg: '#DBEAFE', border: '#93C5FD' },
+  { key: 'b2b', label: '🏢 B2B', color: '#D97706', bg: '#FEF3C7', border: '#FCD34D' },
+  { key: 'particulier', label: '👤 Particuliers', color: '#6B7280', bg: '#F9FAFB', border: '#E5E7EB' },
+];
+
+function getListeType(p: Prospect): Exclude<ListeType, 'all'> {
+  const prenom = p.prenom ?? '';
+  if (prenom === '(B2B équipé)') return 'equipe';
+  if (prenom === '(B2B sans panneaux)') return 'toiture';
+  if (prenom === '(B2B)') return 'b2b';
+  if (p.notes?.includes('Lead MAINTENANCE')) return 'equipe';
+  if (p.notes?.includes('NOUVELLE INSTALLATION')) return 'toiture';
+  return 'particulier';
+}
+
+function prospectDisplayName(p: Prospect): string {
+  const prenom = p.prenom ?? '';
+  if (prenom.startsWith('(B2B')) return p.nom;
+  return `${prenom} ${p.nom}`.trim();
+}
+
 export default function ProspectsPage() {
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading] = useState(true);
   const [demo, setDemo] = useState(false);
   const [activeTab, setActiveTab] = useState<ProspectStatut | 'all'>('all');
+  const [activeListe, setActiveListe] = useState<ListeType>('all');
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<Prospect | null>(null);
 
@@ -67,17 +100,27 @@ export default function ProspectsPage() {
     const needle = q.trim().toLowerCase();
     return prospects.filter((p) => {
       if (activeTab !== 'all' && p.statut !== activeTab) return false;
+      if (activeListe !== 'all' && getListeType(p) !== activeListe) return false;
       if (needle) {
         const hay = `${p.nom} ${p.prenom} ${p.email ?? ''} ${p.adresse} ${p.ville}`.toLowerCase();
         if (!hay.includes(needle)) return false;
       }
       return true;
     });
-  }, [prospects, activeTab, q]);
+  }, [prospects, activeTab, activeListe, q]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: prospects.length };
     for (const p of prospects) c[p.statut] = (c[p.statut] ?? 0) + 1;
+    return c;
+  }, [prospects]);
+
+  const listeCounts = useMemo(() => {
+    const c: Record<string, number> = { all: prospects.length };
+    for (const p of prospects) {
+      const t = getListeType(p);
+      c[t] = (c[t] ?? 0) + 1;
+    }
     return c;
   }, [prospects]);
 
@@ -99,6 +142,32 @@ export default function ProspectsPage() {
       </header>
 
       <div className="card mb-4">
+        {/* Filtres par liste CRM */}
+        <div className="flex gap-1.5 flex-wrap pb-3 border-b border-border mb-3">
+          {LISTE_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setActiveListe(f.key)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5"
+              style={{
+                background: activeListe === f.key ? f.bg : 'transparent',
+                color: activeListe === f.key ? f.color : '#9CA3AF',
+                border: `1.5px solid ${activeListe === f.key ? f.border : 'transparent'}`,
+              }}
+            >
+              {f.label}
+              <span
+                className="text-[10px] px-1 rounded"
+                style={{ background: 'rgba(0,0,0,0.07)' }}
+              >
+                {listeCounts[f.key] ?? 0}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Filtres par statut + recherche */}
         <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
           <div className="flex gap-1.5 flex-wrap">
             {TABS.map((t) => (
@@ -177,11 +246,12 @@ export default function ProspectsPage() {
                       <Thumbnail lat={p.latitude} lng={p.longitude} />
                       <div>
                         <div className="font-semibold">
-                          {p.prenom} {p.nom}
+                          {prospectDisplayName(p)}
                         </div>
                         <div className="text-xs text-text-muted">
                           {p.email ?? '—'}
                         </div>
+                        <ListeBadge prospect={p} />
                       </div>
                     </div>
                   </td>
@@ -225,6 +295,26 @@ export default function ProspectsPage() {
         }}
       />
     </div>
+  );
+}
+
+function ListeBadge({ prospect }: { prospect: Prospect }) {
+  const type = getListeType(prospect);
+  if (type === 'particulier') return null;
+  const config: Record<Exclude<ListeType, 'all' | 'particulier'>, { label: string; color: string; bg: string }> = {
+    equipe: { label: '🔧 Maintenance', color: '#065F46', bg: '#D1FAE5' },
+    toiture: { label: '⚡ À installer', color: '#1D4ED8', bg: '#DBEAFE' },
+    b2b: { label: '🏢 B2B', color: '#D97706', bg: '#FEF3C7' },
+  };
+  const c = config[type];
+  if (!c) return null;
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold mt-0.5"
+      style={{ background: c.bg, color: c.color }}
+    >
+      {c.label}
+    </span>
   );
 }
 
@@ -347,7 +437,7 @@ function ProspectModal({
     <Modal
       open={Boolean(prospect)}
       onClose={onClose}
-      title={`${prospect.prenom} ${prospect.nom}`}
+      title={prospectDisplayName(prospect)}
       size="lg"
     >
       <div className="space-y-6">

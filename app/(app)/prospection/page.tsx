@@ -1393,8 +1393,8 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
 const MIN_TOIT_M2 = 90;
 
 function ScannerToitures() {
-  const [codePostal, setCodePostal] = useState('');
-  const [secteur, setSecteur] = useState('');
+  const [dept, setDept] = useState('30');
+  const [commune, setCommune] = useState('');
   const [limit, setLimit] = useState(15);
   const [addresses, setAddresses] = useState<ScannedAddress[]>([]);
   const [searching, setSearching] = useState(false);
@@ -1405,18 +1405,18 @@ function ScannerToitures() {
 
   useEffect(() => {
     try {
-      const saved = sessionStorage.getItem('scanner_toitures_v1');
+      const saved = sessionStorage.getItem('scanner_toitures_v2');
       if (!saved) return;
       const d = JSON.parse(saved) as {
         addresses: ScannedAddress[];
-        codePostal: string;
-        secteur: string;
+        dept: string;
+        commune: string;
         limit: number;
         totalDispo: number | null;
       };
       setAddresses(d.addresses ?? []);
-      setCodePostal(d.codePostal ?? '');
-      setSecteur(d.secteur ?? '');
+      setDept(d.dept ?? '30');
+      setCommune(d.commune ?? '');
       setLimit(d.limit ?? 15);
       setTotalDispo(d.totalDispo ?? null);
     } catch { /* ignore */ }
@@ -1425,21 +1425,13 @@ function ScannerToitures() {
   useEffect(() => {
     if (addresses.length === 0) return;
     try {
-      sessionStorage.setItem('scanner_toitures_v1', JSON.stringify({
-        addresses, codePostal, secteur, limit, totalDispo,
+      sessionStorage.setItem('scanner_toitures_v2', JSON.stringify({
+        addresses, dept, commune, limit, totalDispo,
       }));
     } catch { /* ignore */ }
-  }, [addresses, codePostal, secteur, limit, totalDispo]);
+  }, [addresses, dept, commune, limit, totalDispo]);
 
   async function search() {
-    if (!codePostal.trim()) {
-      setError('Renseigne un code postal (ex : 34170).');
-      return;
-    }
-    if (!/^\d{5}$/.test(codePostal.trim())) {
-      setError('Code postal invalide (5 chiffres).');
-      return;
-    }
     setSearching(true);
     setError(null);
     setAddresses([]);
@@ -1447,10 +1439,10 @@ function ScannerToitures() {
     setTotalDispo(null);
     try {
       const qs = new URLSearchParams({
-        code_postal: codePostal.trim(),
+        dept,
         limit: String(limit),
       });
-      if (secteur) qs.set('secteur', secteur);
+      if (commune.trim()) qs.set('commune', commune.trim());
       const r = await fetch(`/api/prospection-entreprises?${qs.toString()}`);
       const json = (await r.json()) as
         | { entreprises: Array<ScannedAddress & { entreprise: EntrepriseMeta }>; count: number; total: number }
@@ -1648,29 +1640,24 @@ Ajouté le ${new Date().toLocaleDateString('fr-FR')}.`
 
       <div className="card mb-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="relative">
-            <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-            <input
-              value={codePostal}
-              onChange={(e) => setCodePostal(e.target.value.replace(/\D/g, '').slice(0, 5))}
-              onKeyDown={(e) => e.key === 'Enter' && void search()}
-              placeholder="Code postal (34170…)"
-              className="input pl-9 h-12"
-              inputMode="numeric"
-            />
-          </div>
           <select
-            value={secteur}
-            onChange={(e) => setSecteur(e.target.value)}
+            value={dept}
+            onChange={(e) => setDept(e.target.value)}
             className="input h-12"
           >
-            <option value="">Tous secteurs (gros toits)</option>
-            {SECTIONS_SOLAR_PRIORITAIRES.map((s) => (
-              <option key={s.code} value={s.code}>
-                {s.emoji} {s.label}
-              </option>
-            ))}
+            <option value="30">Gard (30) — tout le département</option>
+            <option value="34">Hérault (34) — tout le département</option>
           </select>
+          <div className="relative">
+            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+            <input
+              value={commune}
+              onChange={(e) => setCommune(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void search()}
+              placeholder="Commune (optionnel — ex : Nîmes)"
+              className="input pl-9 h-12"
+            />
+          </div>
           <select
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
@@ -1692,8 +1679,9 @@ Ajouté le ${new Date().toLocaleDateString('fr-FR')}.`
           </Button>
         </div>
         <p className="text-xs text-text-muted mt-3">
-          ⚡ Sources : SIRENE/INSEE + Google Solar API. Coût estimé : ~{formatEuros(limit * 0.05)} pour{' '}
-          {limit} analyses. Le scan démarre <strong>automatiquement</strong> après la recherche.
+          ⚡ Sources : SIRENE/INSEE (tous secteurs, tous le département) + Google Solar API.
+          Coût estimé : ~{formatEuros(limit * 0.05)} pour {limit} analyses.
+          Le scan démarre <strong>automatiquement</strong> après la recherche.
         </p>
       </div>
 
