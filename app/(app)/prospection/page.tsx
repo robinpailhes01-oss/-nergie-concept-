@@ -1047,20 +1047,26 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
     if (nomsCorrespondent(ent.nom, item.nom_installation)) score += 20;
     const key = item.nom_installation + item.commune;
     const solar = solarData[key];
-    if (solar?.panneaux_detectes === 'oui') {
+    const detection = solar?.panneaux_detectes;
+    if (detection === 'oui') {
       // Google CONFIRME visuellement les panneaux sur le toit = preuve forte
       score += 25;
+      // Bonus photo récente (<3 ans) — on extrait l'année du libellé "mois aaaa"
+      const d = solar?.detection_date ?? solarDates[key];
+      const annee = d ? Number(d.match(/\d{4}/)?.[0]) : NaN;
+      if (!Number.isNaN(annee) && new Date().getFullYear() - annee <= 3) {
+        score += 10;
+      }
+    } else if (detection === 'non') {
+      // Vérif croisée NÉGATIVE : le registre dit équipée mais Google ne voit
+      // aucun panneau à cette adresse → installation au sol, ou siège ≠ site.
+      // Lead à vérifier impérativement avant déplacement.
+      score -= 10;
     } else if (solarStatus[key] === 'ok') {
-      // Bâtiment trouvé mais détection visuelle non concluante
+      // Bâtiment trouvé mais détection visuelle indisponible
       score += 10;
     }
-    // Bonus photo récente (<3 ans) — on extrait l'année du libellé "mois aaaa"
-    const d = solar?.detection_date ?? solarDates[key];
-    const annee = d ? Number(d.match(/\d{4}/)?.[0]) : NaN;
-    if (!Number.isNaN(annee) && new Date().getFullYear() - annee <= 3) {
-      score += 10;
-    }
-    return Math.min(score, 100);
+    return Math.max(0, Math.min(score, 100));
   }
 
   const itemsTries = [...items].sort(
@@ -1336,20 +1342,20 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
                                       style={{ background: '#D1FAE5', color: '#065F46', border: '1px solid #34D399' }}
                                       title="Google détecte des panneaux solaires sur cette toiture — installation confirmée visuellement"
                                     >
-                                      🟢 Panneaux confirmés par Google
+                                      <Dot color="#059669" /> Panneaux confirmés par Google
                                       {(solarData[key]?.detection_date ?? solarDates[key]) && (
-                                        <span className="font-normal opacity-80">· 📷 {solarData[key]?.detection_date ?? solarDates[key]}</span>
+                                        <span className="font-normal opacity-80">· photo {solarData[key]?.detection_date ?? solarDates[key]}</span>
                                       )}
                                     </div>
                                   ) : solarData[key]?.panneaux_detectes === 'non' ? (
                                     <div
                                       className="text-[11px] font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded"
                                       style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}
-                                      title="Le registre dit équipée mais Google ne voit pas de panneaux (photo ancienne, ombrage, ou désinstallation) — à vérifier"
+                                      title="Le registre dit équipée mais Google ne voit pas de panneaux (installation au sol, siège ≠ site, ou désinstallation) — à vérifier impérativement"
                                     >
-                                      ⚠️ Aucun panneau vu par Google
+                                      ⚠ Aucun panneau vu par Google — à vérifier
                                       {(solarData[key]?.detection_date ?? solarDates[key]) && (
-                                        <span className="font-normal opacity-80">· 📷 {solarData[key]?.detection_date ?? solarDates[key]}</span>
+                                        <span className="font-normal opacity-80">· photo {solarData[key]?.detection_date ?? solarDates[key]}</span>
                                       )}
                                     </div>
                                   ) : (
@@ -1360,7 +1366,7 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
                                     >
                                       ✓ Google Solar OK
                                       {solarDates[key] && (
-                                        <span className="font-normal opacity-80">· 📷 {solarDates[key]}</span>
+                                        <span className="font-normal opacity-80">· photo {solarDates[key]}</span>
                                       )}
                                     </div>
                                   )
@@ -1773,7 +1779,7 @@ Ajouté le ${new Date().toLocaleDateString('fr-FR')}.`
                   )}
                   {detecteesCount > 0 && (
                     <span>
-                      🟢 {detecteesCount} avec panneaux détectés par Google exclue{detecteesCount > 1 ? 's' : ''}
+                      {detecteesCount} avec panneaux détectés par Google exclue{detecteesCount > 1 ? 's' : ''}
                       {tropPetitCount > 0 ? ' · ' : ''}
                     </span>
                   )}
@@ -1960,10 +1966,19 @@ function Thumbnail({
   return img;
 }
 
+function Dot({ color }: { color: string }) {
+  return (
+    <span
+      className="inline-block w-2 h-2 rounded-full shrink-0"
+      style={{ background: color }}
+    />
+  );
+}
+
 function DetectionBadge({ solar }: { solar?: SolarApiResponse }) {
   if (!solar) return null;
   const date = solar.detection_date ?? solar.imagery_date;
-  const dateLabel = date ? ` · 📷 ${date}` : '';
+  const dateLabel = date ? ` · photo ${date}` : '';
   if (solar.panneaux_detectes === 'oui') {
     return (
       <div
@@ -1971,7 +1986,7 @@ function DetectionBadge({ solar }: { solar?: SolarApiResponse }) {
         style={{ background: '#D1FAE5', color: '#065F46', border: '1px solid #6EE7B7' }}
         title="Google détecte des panneaux solaires sur cette toiture"
       >
-        🟢 Panneaux confirmés{dateLabel}
+        <Dot color="#059669" /> Panneaux confirmés{dateLabel}
       </div>
     );
   }
@@ -1982,7 +1997,7 @@ function DetectionBadge({ solar }: { solar?: SolarApiResponse }) {
         style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}
         title="Aucun panneau détecté — toiture libre"
       >
-        ⚪ Aucun panneau{dateLabel}
+        <Dot color="#93C5FD" /> Aucun panneau{dateLabel}
       </div>
     );
   }
@@ -1992,7 +2007,7 @@ function DetectionBadge({ solar }: { solar?: SolarApiResponse }) {
       style={{ background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}
       title="Détection de panneaux indisponible pour ce bâtiment"
     >
-      Détection indispo{dateLabel}
+      <Dot color="#D1D5DB" /> Détection indispo{dateLabel}
     </div>
   );
 }

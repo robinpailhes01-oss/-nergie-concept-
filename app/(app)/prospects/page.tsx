@@ -329,7 +329,8 @@ function DetectionPanneauxBadge({ prospect }: { prospect: Prospect }) {
         className="rounded-lg px-3 py-2 text-xs font-bold flex items-center gap-2"
         style={{ background: '#D1FAE5', color: '#065F46', border: '1px solid #6EE7B7' }}
       >
-        🟢 Panneaux solaires détectés sur le toit
+        <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: '#059669' }} />
+        Panneaux solaires détectés sur le toit
         {date && <span className="font-normal opacity-80">(photo {date})</span>}
       </div>
     );
@@ -339,7 +340,8 @@ function DetectionPanneauxBadge({ prospect }: { prospect: Prospect }) {
       className="rounded-lg px-3 py-2 text-xs font-bold flex items-center gap-2"
       style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}
     >
-      ⚪ Aucun panneau détecté — toiture libre
+      <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: '#93C5FD' }} />
+      Aucun panneau détecté — toiture libre
       {date && <span className="font-normal opacity-80">(photo {date})</span>}
     </div>
   );
