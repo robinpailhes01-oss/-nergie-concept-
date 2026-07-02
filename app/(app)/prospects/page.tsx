@@ -543,6 +543,18 @@ function ProspectModal({
               value={prospect.telephone ?? '—'}
             />
           </div>
+          {prospect.site_web && (
+            <a
+              href={prospect.site_web}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-lg"
+              style={{ background: '#FEF0E6', color: '#D96B0A' }}
+            >
+              <ExternalLink className="w-4 h-4" />
+              {prospect.site_web.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}
+            </a>
+          )}
         </section>
 
         {/* === ÉTUDE TECHNIQUE === */}

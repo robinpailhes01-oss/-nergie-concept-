@@ -49,6 +49,7 @@ create table if not exists public.prospects (
   qualite_imagerie         text,
   panneaux_detectes        text,
   date_photo_satellite     text,
+  site_web                 text,
 
   -- Financier
   puissance_kwc        double precision,

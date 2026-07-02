@@ -153,6 +153,7 @@ export interface Prospect {
   // Détection panneaux existants + date de la photo satellite (Google Solar)
   panneaux_detectes?: DetectionPanneaux | null;
   date_photo_satellite?: string | null;
+  site_web?: string | null;
 
   statut: ProspectStatut;
   notes: string | null;
