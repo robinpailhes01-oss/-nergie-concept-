@@ -1873,7 +1873,7 @@ Opportunités : entretien, remplacement micro-onduleurs, extension, batterie.`;
 // Mode À DÉMARCHER (toitures ≥90 m² sans panneaux — SIRENE + Solar)
 // ============================================================
 
-const MIN_TOIT_M2 = 90;
+const MIN_TOIT_M2 = 80;
 
 function ScannerToitures() {
   const [dept, setDept] = useState('30');
