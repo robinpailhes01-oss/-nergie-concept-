@@ -7,7 +7,7 @@
 // ============================================================
 
 import { NextResponse } from 'next/server';
-import { getSupabase, supabaseEnabled } from '@/lib/supabase';
+import { getSupabase, supabaseEnabled, supabaseHost } from '@/lib/supabase';
 import { demoProspects } from '@/lib/demo-data';
 import type { Prospect, ProspectInsert } from '@/types';
 
@@ -68,12 +68,14 @@ export async function GET(req: Request) {
       prospects: filterDemo(demoProspects, { statut, q, ville }),
       demo: true,
       error: error.message,
+      source: supabaseHost,
     });
   }
 
   return NextResponse.json({
     prospects: (data ?? []) as Prospect[],
     demo: false,
+    source: supabaseHost,
   });
 }
 

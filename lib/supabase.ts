@@ -24,6 +24,9 @@ const anonKey = envIsRetired ? DEFAULT_ANON_KEY : envAnonKey || DEFAULT_ANON_KEY
 
 export const supabaseEnabled = Boolean(url && anonKey);
 
+/** Hôte réellement utilisé — utile pour diagnostiquer une configuration d'hébergeur. */
+export const supabaseHost = url.replace(/^https?:\/\//, '').split('.')[0];
+
 let _client: SupabaseClient | null = null;
 
 export function getSupabase(): SupabaseClient | null {
