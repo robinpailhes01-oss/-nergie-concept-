@@ -4,23 +4,16 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-// Base de production Énergies Concept. Les variables d'environnement
-// restent prioritaires ; ces valeurs servent de repli pour que le CRM
-// fonctionne sans configuration côté hébergeur (clé anon publique).
-const DEFAULT_URL = 'https://szdfpjyytwedhochvzfd.supabase.co';
-const DEFAULT_ANON_KEY =
+// Base de production Énergies Concept (clé anon publique, RLS active).
+//
+// La connexion est volontairement définie ici plutôt que par variables
+// d'environnement : plusieurs projets Supabase se sont succédé et des
+// variables obsolètes côté hébergeur désignaient encore des projets
+// supprimés, ce qui basculait silencieusement le CRM en mode démo.
+// Pour changer de base, modifier ces deux constantes.
+const url = 'https://szdfpjyytwedhochvzfd.supabase.co';
+const anonKey =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN6ZGZwanl5dHdlZGhvY2h2emZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3NzExMDEsImV4cCI6MjA5NTM0NzEwMX0.LKISYgm1CBPYP4VfvH_S6C7meSQb1H57LxkldF9UhC0';
-
-// Projets Supabase retirés : d'anciennes variables d'environnement peuvent
-// encore les désigner côté hébergeur, ce qui ferait échouer toutes les requêtes.
-const RETIRED_PROJECT_REFS = ['jlcqxtxpvuyfznecpwqu'];
-
-const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const envAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const envIsRetired = RETIRED_PROJECT_REFS.some((ref) => envUrl?.includes(ref));
-
-const url = envIsRetired ? DEFAULT_URL : envUrl || DEFAULT_URL;
-const anonKey = envIsRetired ? DEFAULT_ANON_KEY : envAnonKey || DEFAULT_ANON_KEY;
 
 export const supabaseEnabled = Boolean(url && anonKey);
 
