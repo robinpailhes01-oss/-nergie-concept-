@@ -214,24 +214,23 @@ export default function ProspectsPage() {
             <thead>
               <tr className="text-left text-xs font-semibold text-text-muted uppercase tracking-wide border-b border-border">
                 <th className="pb-3 pr-4">Prospect</th>
-                <th className="pb-3 pr-4">Localisation</th>
-                <th className="pb-3 pr-4">Installation</th>
-                <th className="pb-3 pr-4">Montant</th>
-                <th className="pb-3 pr-4">ROI</th>
+                <th className="pb-3 pr-4">Adresse postale</th>
+                <th className="pb-3 pr-4">Panneaux depuis</th>
+                <th className="pb-3 pr-4">Vérification</th>
                 <th className="pb-3">Statut</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-text-muted">
+                  <td colSpan={5} className="py-8 text-center text-text-muted">
                     Chargement…
                   </td>
                 </tr>
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-text-muted">
+                  <td colSpan={5} className="py-12 text-center text-text-muted">
                     Aucun prospect ne correspond aux critères.
                   </td>
                 </tr>
@@ -257,23 +256,21 @@ export default function ProspectsPage() {
                     </div>
                   </td>
                   <td className="py-3 pr-4">
-                    <div className="flex items-center gap-1 text-text-muted">
-                      <MapPin className="w-3 h-3" />
-                      {p.ville}
+                    <div className="flex items-start gap-1 text-text-muted">
+                      <MapPin className="w-3 h-3 mt-0.5 shrink-0" />
+                      <span>
+                        <span className="text-text font-medium">{p.adresse}</span>
+                        <br />
+                        {p.code_postal ? `${p.code_postal} ` : ''}
+                        {p.ville}
+                      </span>
                     </div>
                   </td>
                   <td className="py-3 pr-4">
-                    {p.puissance_kwc
-                      ? `${p.puissance_kwc} kWc · ${p.nb_panneaux_recommande} pan.`
-                      : '—'}
-                  </td>
-                  <td className="py-3 pr-4 font-semibold">
-                    {p.cout_installation_ttc
-                      ? formatEuros(p.cout_installation_ttc)
-                      : '—'}
+                    <AnneeInstallation prospect={p} />
                   </td>
                   <td className="py-3 pr-4">
-                    {p.temps_retour_ans ? `${p.temps_retour_ans} ans` : '—'}
+                    <VerificationBadge prospect={p} />
                   </td>
                   <td className="py-3">
                     <StatutBadge statut={p.statut} />
@@ -296,6 +293,152 @@ export default function ProspectsPage() {
         }}
       />
     </div>
+  );
+}
+
+function parseCohorte(p: Prospect): { periode: string; echeance: string } | null {
+  const m = p.notes?.match(/cohorte (\d{4})-(\d{4})/);
+  if (!m) return null;
+  const debut = Number(m[1]);
+  const fin = Number(m[2]);
+  return {
+    periode: `${debut}–${fin}`,
+    echeance: `${debut + 20}–${fin + 20}`,
+  };
+}
+
+function AnneeInstallation({ prospect }: { prospect: Prospect }) {
+  const cohorte = parseCohorte(prospect);
+
+  if (cohorte) {
+    return (
+      <div>
+        <div className="font-semibold tabular-nums">{cohorte.periode}</div>
+        <div className="text-xs text-text-muted">
+          Contrat → {cohorte.echeance}
+        </div>
+      </div>
+    );
+  }
+
+  if (prospect.panneaux_detectes === 'oui') {
+    return (
+      <div>
+        <div className="font-semibold">Équipé</div>
+        <div className="text-xs text-text-muted">
+          {prospect.date_photo_satellite ?? 'date inconnue'}
+        </div>
+      </div>
+    );
+  }
+
+  if (prospect.panneaux_detectes === 'non') {
+    return <span className="text-text-muted">Toiture libre</span>;
+  }
+
+  return <span className="text-text-muted">—</span>;
+}
+
+function VerificationBadge({ prospect }: { prospect: Prospect }) {
+  const notes = prospect.notes ?? '';
+  const triDate = notes.includes('Vérification 3 dates');
+  const croisee = notes.includes('Vérifications croisées');
+  const confiance = notes.match(/confiance (haute|moyenne|basse)/)?.[1];
+
+  if (!triDate && !croisee) {
+    return <span className="text-text-muted text-xs">—</span>;
+  }
+
+  const label = triDate ? '3 photos aériennes' : '6 contrôles croisés';
+  const fiable = confiance !== 'moyenne' && confiance !== 'basse';
+
+  return (
+    <div>
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold"
+        style={
+          fiable
+            ? { background: '#D1FAE5', color: '#065F46' }
+            : { background: '#FEF3C7', color: '#92400E' }
+        }
+      >
+        ✓ {label}
+      </span>
+      {confiance && (
+        <div className="text-xs text-text-muted mt-0.5">
+          confiance {confiance}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PreuveDatation({ prospect }: { prospect: Prospect }) {
+  const notes = prospect.notes ?? '';
+  const cohorte = parseCohorte(prospect);
+
+  const controles = notes
+    .split('\n')
+    .filter((l) => l.trim().startsWith('-') || l.trim().startsWith('Vérification'))
+    .map((l) => l.replace(/^[-\s]+/, '').trim())
+    .filter(Boolean);
+
+  const parcelle = notes.match(/Parcelle cadastrale : ([^\n—]+)/)?.[1]?.trim();
+  const precision = notes.match(/—\s*(adresse[^\n.]+)/i)?.[1]?.trim();
+  const mapsUrl = notes.match(/https:\/\/www\.google\.com\/maps\/[^\s\n]+/)?.[0];
+
+  if (!controles.length && !parcelle) return null;
+
+  return (
+    <section
+      className="rounded-2xl p-4"
+      style={{ background: '#F0FDF4', border: '1.5px solid #86EFAC' }}
+    >
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <div className="font-display font-bold text-sm" style={{ color: '#065F46' }}>
+          ✓ Preuve de datation des panneaux
+        </div>
+        {cohorte && (
+          <div className="text-xs font-semibold" style={{ color: '#065F46' }}>
+            Installés entre {cohorte.periode} · contrat EDF jusqu&apos;à{' '}
+            {cohorte.echeance}
+          </div>
+        )}
+      </div>
+
+      <ul className="space-y-1.5">
+        {controles.map((c, i) => (
+          <li key={i} className="text-[13px] leading-snug flex gap-2">
+            <span style={{ color: '#059669' }}>✓</span>
+            <span>{c}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 pt-3 text-xs text-text-muted border-t border-[#BBF7D0]">
+        <span>
+          <strong className="text-text">Adresse :</strong> {prospect.adresse},{' '}
+          {prospect.code_postal} {prospect.ville}
+        </span>
+        {parcelle && (
+          <span>
+            <strong className="text-text">Parcelle :</strong> {parcelle}
+          </span>
+        )}
+        {precision && <span>{precision}</span>}
+        {mapsUrl && (
+          <a
+            href={mapsUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold"
+            style={{ color: '#047857' }}
+          >
+            Vérifier sur Google Maps ↗
+          </a>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -531,6 +674,8 @@ function ProspectModal({
             <DetectionPanneauxBadge prospect={prospect} />
           </div>
         </div>
+
+        <PreuveDatation prospect={prospect} />
 
         {/* === CONTACT === */}
         <section>
